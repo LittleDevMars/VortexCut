@@ -164,14 +164,32 @@ public class ClipCanvasPanel : Control
         double height = track.Height - 10;
         var clipRect = new Rect(x, y + 5, Math.Max(width, MinClipWidth), height);
 
-        // 클립 배경 (그라데이션)
-        var topColor = isSelected
-            ? Color.Parse("#4A90E2")  // 밝은 파란색
-            : Color.Parse("#3A3A3C");  // 다크 그레이
+        // 클립 타입 감지 (비디오/오디오)
+        bool isAudioClip = track.Type == TrackType.Audio;
 
-        var bottomColor = isSelected
-            ? Color.Parse("#2D6AA6")  // 어두운 파란색
-            : Color.Parse("#2A2A2C");  // 더 어두운 그레이
+        // 클립 배경 (그라데이션 - DaVinci Resolve 스타일)
+        Color topColor, bottomColor;
+
+        if (isAudioClip)
+        {
+            // 오디오 클립: 초록색 그라데이션
+            topColor = isSelected
+                ? Color.Parse("#5CB85C")  // 밝은 초록
+                : Color.Parse("#3A5A3A");  // 다크 초록
+            bottomColor = isSelected
+                ? Color.Parse("#449D44")  // 어두운 초록
+                : Color.Parse("#2A4A2A");  // 더 어두운 초록
+        }
+        else
+        {
+            // 비디오 클립: 파란색 그라데이션
+            topColor = isSelected
+                ? Color.Parse("#4A90E2")  // 밝은 파란색
+                : Color.Parse("#3A5A7A");  // 다크 블루
+            bottomColor = isSelected
+                ? Color.Parse("#2D6AA6")  // 어두운 파란색
+                : Color.Parse("#2A4A6A");  // 더 어두운 블루
+        }
 
         var gradientBrush = new LinearGradientBrush
         {
@@ -185,6 +203,12 @@ public class ClipCanvasPanel : Control
         };
 
         context.FillRectangle(gradientBrush, clipRect);
+
+        // 오디오 웨이브폼 (간단한 시뮬레이션)
+        if (isAudioClip && width > 50)
+        {
+            DrawAudioWaveform(context, clipRect);
+        }
 
         // 테두리 (선택된 클립은 하얀색, 일반은 회색)
         var borderPen = isSelected
@@ -210,6 +234,64 @@ public class ClipCanvasPanel : Control
         {
             DrawKeyframes(context, clip);
         }
+    }
+
+    /// <summary>
+    /// 오디오 웨이브폼 렌더링 (간단한 시뮬레이션)
+    /// </summary>
+    private void DrawAudioWaveform(DrawingContext context, Rect clipRect)
+    {
+        const int SampleInterval = 4; // 4픽셀마다 샘플
+        const double MaxAmplitude = 0.4; // 클립 높이의 40%
+
+        var waveformBrush = new SolidColorBrush(Color.FromArgb(180, 100, 200, 100)); // 반투명 밝은 초록
+        var centerY = clipRect.Top + clipRect.Height / 2;
+
+        // 간단한 사인파 + 랜덤 노이즈로 웨이브폼 시뮬레이션
+        var random = new System.Random((int)clipRect.X); // 일관된 랜덤 시드
+        var geometry = new StreamGeometry();
+
+        using (var ctx = geometry.Open())
+        {
+            bool firstPoint = true;
+            for (double x = clipRect.Left; x < clipRect.Right; x += SampleInterval)
+            {
+                // 사인파 + 랜덤 노이즈
+                double phase = (x - clipRect.Left) / 20.0;
+                double sine = Math.Sin(phase) * 0.5;
+                double noise = (random.NextDouble() - 0.5) * 0.5;
+                double amplitude = (sine + noise) * MaxAmplitude * clipRect.Height;
+
+                var topPoint = new Point(x, centerY - Math.Abs(amplitude));
+                var bottomPoint = new Point(x, centerY + Math.Abs(amplitude));
+
+                if (firstPoint)
+                {
+                    ctx.BeginFigure(topPoint, true);
+                    firstPoint = false;
+                }
+                else
+                {
+                    ctx.LineTo(topPoint);
+                }
+            }
+
+            // 하단 경로 (거울 대칭)
+            for (double x = clipRect.Right - SampleInterval; x >= clipRect.Left; x -= SampleInterval)
+            {
+                double phase = (x - clipRect.Left) / 20.0;
+                double sine = Math.Sin(phase) * 0.5;
+                double noise = (random.NextDouble() - 0.5) * 0.5;
+                double amplitude = (sine + noise) * MaxAmplitude * clipRect.Height;
+
+                var bottomPoint = new Point(x, centerY + Math.Abs(amplitude));
+                ctx.LineTo(bottomPoint);
+            }
+
+            ctx.EndFigure(true);
+        }
+
+        context.DrawGeometry(waveformBrush, null, geometry);
     }
 
     private void DrawKeyframes(DrawingContext context, ClipModel clip)
