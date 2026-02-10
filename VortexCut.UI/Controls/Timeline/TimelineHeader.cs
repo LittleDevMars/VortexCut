@@ -72,6 +72,7 @@ public class TimelineHeader : Control
         if (_viewModel != null)
         {
             DrawMarkers(context);
+            DrawInOutPoints(context);
         }
 
         // 상태 정보 표시 (우측 상단)
@@ -567,6 +568,131 @@ public class TimelineHeader : Control
         {
             _hoveredMarker = newHoveredMarker;
             InvalidateVisual();
+        }
+    }
+
+    /// <summary>
+    /// In/Out 포인트 시각화 (워크에어리어 표시)
+    /// </summary>
+    private void DrawInOutPoints(DrawingContext context)
+    {
+        if (_viewModel == null) return;
+
+        // In/Out 포인트가 둘 다 있으면 워크에어리어 영역 하이라이트
+        if (_viewModel.InPointMs.HasValue && _viewModel.OutPointMs.HasValue)
+        {
+            double inX = TimeToX(_viewModel.InPointMs.Value);
+            double outX = TimeToX(_viewModel.OutPointMs.Value);
+
+            // 워크에어리어 배경 (반투명 파란색)
+            var workAreaRect = new Rect(
+                Math.Max(0, inX),
+                0,
+                Math.Min(Bounds.Width, outX) - Math.Max(0, inX),
+                HeaderHeight);
+
+            if (workAreaRect.Width > 0)
+            {
+                context.FillRectangle(
+                    new SolidColorBrush(Color.FromArgb(30, 0, 122, 204)),
+                    workAreaRect);
+            }
+        }
+
+        // In 포인트 표시 (초록색 삼각형)
+        if (_viewModel.InPointMs.HasValue)
+        {
+            double inX = TimeToX(_viewModel.InPointMs.Value);
+
+            if (inX >= 0 && inX <= Bounds.Width)
+            {
+                // 그림자
+                var shadowGeometry = new StreamGeometry();
+                using (var ctx = shadowGeometry.Open())
+                {
+                    ctx.BeginFigure(new Point(inX + 1, 1), true);
+                    ctx.LineTo(new Point(inX + 11, 1));
+                    ctx.LineTo(new Point(inX + 1, 11));
+                    ctx.EndFigure(true);
+                }
+                context.DrawGeometry(
+                    new SolidColorBrush(Color.FromArgb(100, 0, 0, 0)),
+                    null,
+                    shadowGeometry);
+
+                // 본체
+                var geometry = new StreamGeometry();
+                using (var ctx = geometry.Open())
+                {
+                    ctx.BeginFigure(new Point(inX, 0), true);
+                    ctx.LineTo(new Point(inX + 10, 0));
+                    ctx.LineTo(new Point(inX, 10));
+                    ctx.EndFigure(true);
+                }
+                context.DrawGeometry(
+                    new SolidColorBrush(Color.FromArgb(220, 92, 184, 92)), // 초록색
+                    new Pen(Brushes.White, 1),
+                    geometry);
+
+                // In 라벨
+                var inText = new FormattedText(
+                    "IN",
+                    System.Globalization.CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight,
+                    new Typeface("Segoe UI", FontStyle.Normal, FontWeight.Bold),
+                    8,
+                    Brushes.White);
+
+                context.DrawText(inText, new Point(inX + 2, 12));
+            }
+        }
+
+        // Out 포인트 표시 (빨간색 삼각형)
+        if (_viewModel.OutPointMs.HasValue)
+        {
+            double outX = TimeToX(_viewModel.OutPointMs.Value);
+
+            if (outX >= 0 && outX <= Bounds.Width)
+            {
+                // 그림자
+                var shadowGeometry = new StreamGeometry();
+                using (var ctx = shadowGeometry.Open())
+                {
+                    ctx.BeginFigure(new Point(outX + 1, 1), true);
+                    ctx.LineTo(new Point(outX - 9, 1));
+                    ctx.LineTo(new Point(outX + 1, 11));
+                    ctx.EndFigure(true);
+                }
+                context.DrawGeometry(
+                    new SolidColorBrush(Color.FromArgb(100, 0, 0, 0)),
+                    null,
+                    shadowGeometry);
+
+                // 본체
+                var geometry = new StreamGeometry();
+                using (var ctx = geometry.Open())
+                {
+                    ctx.BeginFigure(new Point(outX, 0), true);
+                    ctx.LineTo(new Point(outX - 10, 0));
+                    ctx.LineTo(new Point(outX, 10));
+                    ctx.EndFigure(true);
+                }
+                context.DrawGeometry(
+                    new SolidColorBrush(Color.FromArgb(220, 217, 83, 79)), // 빨간색
+                    new Pen(Brushes.White, 1),
+                    geometry);
+
+                // Out 라벨
+                var outText = new FormattedText(
+                    "OUT",
+                    System.Globalization.CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight,
+                    new Typeface("Segoe UI", FontStyle.Normal, FontWeight.Bold),
+                    8,
+                    Brushes.White);
+
+                context.DrawText(outText, new Point(outX - outText.Width - 2, 12));
+            }
         }
     }
 

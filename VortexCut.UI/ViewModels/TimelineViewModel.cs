@@ -70,6 +70,17 @@ public partial class TimelineViewModel : ViewModelBase
     [ObservableProperty]
     private bool _rippleModeEnabled = false;
 
+    // In/Out 포인트 (워크에어리어)
+    [ObservableProperty]
+    private long? _inPointMs = null;
+
+    [ObservableProperty]
+    private long? _outPointMs = null;
+
+    // 재생 중 여부
+    [ObservableProperty]
+    private bool _isPlaying = false;
+
     public RazorTool? RazorTool { get; private set; }
     public RippleEditService? RippleEditService { get; private set; }
     public LinkClipService? LinkClipService { get; private set; }
@@ -297,5 +308,43 @@ public partial class TimelineViewModel : ViewModelBase
             : 50.0;
 
         keyframeSystem.AddKeyframe(relativeTime, currentValue, InterpolationType.Linear);
+    }
+
+    /// <summary>
+    /// In 포인트 설정 (I 키)
+    /// </summary>
+    [RelayCommand]
+    public void SetInPoint(long timeMs)
+    {
+        InPointMs = timeMs;
+    }
+
+    /// <summary>
+    /// Out 포인트 설정 (O 키)
+    /// </summary>
+    [RelayCommand]
+    public void SetOutPoint(long timeMs)
+    {
+        OutPointMs = timeMs;
+    }
+
+    /// <summary>
+    /// In/Out 포인트 지우기
+    /// </summary>
+    [RelayCommand]
+    public void ClearInOutPoints()
+    {
+        InPointMs = null;
+        OutPointMs = null;
+    }
+
+    /// <summary>
+    /// 재생/일시정지 토글 (Space 키)
+    /// </summary>
+    [RelayCommand]
+    public void TogglePlayback()
+    {
+        IsPlaying = !IsPlaying;
+        // TODO: 실제 재생 로직 구현 (PreviewViewModel과 연동)
     }
 }

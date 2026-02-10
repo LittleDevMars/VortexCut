@@ -413,6 +413,35 @@ public class ClipCanvasPanel : Control
 
         context.FillRectangle(gradientBrush, clipRect);
 
+        // 색상 라벨 (DaVinci Resolve 스타일 - 클립 상단에 얇은 바)
+        if (clip.ColorLabelArgb != 0)
+        {
+            byte a = (byte)((clip.ColorLabelArgb >> 24) & 0xFF);
+            byte r = (byte)((clip.ColorLabelArgb >> 16) & 0xFF);
+            byte g = (byte)((clip.ColorLabelArgb >> 8) & 0xFF);
+            byte b = (byte)(clip.ColorLabelArgb & 0xFF);
+
+            var colorLabelRect = new Rect(
+                clipRect.X,
+                clipRect.Y,
+                clipRect.Width,
+                4); // 4px 높이
+
+            // 그라데이션 색상 라벨
+            var labelGradient = new LinearGradientBrush
+            {
+                StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+                EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative),
+                GradientStops = new GradientStops
+                {
+                    new GradientStop(Color.FromArgb(a, r, g, b), 0),
+                    new GradientStop(Color.FromArgb((byte)(a * 0.7), r, g, b), 1)
+                }
+            };
+
+            context.FillRectangle(labelGradient, colorLabelRect);
+        }
+
         // 선택된 클립 펄스 글로우 효과 (애니메이션)
         if (isSelected)
         {

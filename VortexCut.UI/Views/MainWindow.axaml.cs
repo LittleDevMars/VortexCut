@@ -131,21 +131,21 @@ public partial class MainWindow : Window
 
             // 재생
             case Key.Space:
-                // Space: 재생/정지 토글 (TODO: 구현 필요)
-                // _viewModel.Timeline.TogglePlayback();
+                // Space: 재생/정지 토글
+                _viewModel.Timeline.TogglePlayback();
                 e.Handled = true;
                 break;
 
-            // In/Out 포인트 (TODO: 구현 필요)
+            // In/Out 포인트
             case Key.I:
                 // I: In 포인트 설정
-                // _viewModel.Timeline.SetInPoint(_viewModel.Timeline.CurrentTimeMs);
+                _viewModel.Timeline.SetInPoint(_viewModel.Timeline.CurrentTimeMs);
                 e.Handled = true;
                 break;
 
             case Key.O:
                 // O: Out 포인트 설정
-                // _viewModel.Timeline.SetOutPoint(_viewModel.Timeline.CurrentTimeMs);
+                _viewModel.Timeline.SetOutPoint(_viewModel.Timeline.CurrentTimeMs);
                 e.Handled = true;
                 break;
 

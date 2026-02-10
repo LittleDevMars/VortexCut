@@ -11,6 +11,9 @@ public class ClipModel
     public long DurationMs { get; set; }
     public int TrackIndex { get; set; }
 
+    // 클립 색상 라벨 (DaVinci Resolve 스타일)
+    public uint ColorLabelArgb { get; set; } = 0; // 0 = 색상 없음
+
     // 링크된 클립 (비디오+오디오 연결)
     public ulong? LinkedAudioClipId { get; set; }
     public ulong? LinkedVideoClipId { get; set; }
