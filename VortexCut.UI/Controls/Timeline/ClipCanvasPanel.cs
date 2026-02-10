@@ -140,7 +140,8 @@ public class ClipCanvasPanel : Control
     {
         foreach (var clip in _clips)
         {
-            DrawClip(context, clip, clip == _selectedClip);
+            bool isSelected = _viewModel?.SelectedClips.Contains(clip) ?? false;
+            DrawClip(context, clip, isSelected);
         }
     }
 
@@ -256,6 +257,32 @@ public class ClipCanvasPanel : Control
 
             if (_selectedClip != null)
             {
+                // Ctrl + 클릭: 다중 선택
+                if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && _viewModel != null)
+                {
+                    if (_viewModel.SelectedClips.Contains(_selectedClip))
+                    {
+                        // 이미 선택됨 → 제거
+                        _viewModel.SelectedClips.Remove(_selectedClip);
+                    }
+                    else
+                    {
+                        // 추가 선택
+                        _viewModel.SelectedClips.Add(_selectedClip);
+                    }
+
+                    InvalidateVisual();
+                    e.Handled = true;
+                    return;
+                }
+
+                // 단일 선택 (Ctrl 없음)
+                if (_viewModel != null)
+                {
+                    _viewModel.SelectedClips.Clear();
+                    _viewModel.SelectedClips.Add(_selectedClip);
+                }
+
                 // 트림 엣지 감지
                 _trimEdge = HitTestEdge(_selectedClip, point);
 
@@ -275,6 +302,14 @@ public class ClipCanvasPanel : Control
                     _isDragging = true;
                     _draggingClip = _selectedClip;
                     _dragStartPoint = point;
+                }
+            }
+            else
+            {
+                // 빈 공간 클릭: 선택 해제
+                if (_viewModel != null)
+                {
+                    _viewModel.SelectedClips.Clear();
                 }
             }
 
