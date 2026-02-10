@@ -43,6 +43,12 @@ public class ClipCanvasPanel : Control
     private long _originalStartTimeMs;
     private long _originalDurationMs;
 
+    // 키프레임 드래그 상태
+    private Keyframe? _draggingKeyframe;
+    private KeyframeSystem? _draggingKeyframeSystem;
+    private ClipModel? _draggingKeyframeClip;
+    private bool _isDraggingKeyframe;
+
     public ClipCanvasPanel()
     {
         ClipToBounds = true;
@@ -252,6 +258,37 @@ public class ClipCanvasPanel : Control
         context.DrawGeometry(brush, new Pen(Brushes.Black, 1), geometry);
     }
 
+    /// <summary>
+    /// 마우스 위치에서 키프레임 검색 (HitTest)
+    /// </summary>
+    private (Keyframe?, KeyframeSystem?, ClipModel?) GetKeyframeAtPosition(Point point)
+    {
+        if (_viewModel == null) return (null, null, null);
+
+        // 선택된 클립에서만 키프레임 검색
+        foreach (var clip in _viewModel.SelectedClips)
+        {
+            var keyframeSystem = GetKeyframeSystem(clip, _viewModel.SelectedKeyframeSystem);
+            if (keyframeSystem == null) continue;
+
+            double clipX = TimeToX(clip.StartTimeMs);
+            double clipY = GetTrackYPosition(clip.TrackIndex);
+            double keyframeY = clipY + 20;
+
+            foreach (var keyframe in keyframeSystem.Keyframes)
+            {
+                double keyframeTimeMs = keyframe.Time * 1000;
+                double keyframeX = clipX + (keyframeTimeMs * _pixelsPerMs);
+
+                // 10px 임계값
+                if (Math.Abs(point.X - keyframeX) < 10 && Math.Abs(point.Y - keyframeY) < 10)
+                    return (keyframe, keyframeSystem, clip);
+            }
+        }
+
+        return (null, null, null);
+    }
+
     private void DrawPlayhead(DrawingContext context)
     {
         if (_viewModel == null) return;
@@ -295,7 +332,21 @@ public class ClipCanvasPanel : Control
         // 왼쪽 버튼: Razor 모드 또는 클립 선택/드래그/트림
         if (properties.IsLeftButtonPressed)
         {
-            // Razor 모드: 클립 자르기
+            // 1. 키프레임 HitTest (최우선)
+            var (keyframe, keyframeSystem, clip) = GetKeyframeAtPosition(point);
+            if (keyframe != null && keyframeSystem != null && clip != null)
+            {
+                _isDraggingKeyframe = true;
+                _draggingKeyframe = keyframe;
+                _draggingKeyframeSystem = keyframeSystem;
+                _draggingKeyframeClip = clip;
+                _dragStartPoint = point;
+                Cursor = new Cursor(StandardCursorType.Hand);
+                e.Handled = true;
+                return; // 다른 처리 스킵
+            }
+
+            // 2. Razor 모드: 클립 자르기
             if (_viewModel != null && _viewModel.RazorModeEnabled)
             {
                 var clickedClip = GetClipAtPosition(point);
@@ -427,6 +478,25 @@ public class ClipCanvasPanel : Control
             return;
         }
 
+        // 키프레임 드래그 처리 (최우선)
+        if (_isDraggingKeyframe && _draggingKeyframe != null && _draggingKeyframeSystem != null && _draggingKeyframeClip != null)
+        {
+            var deltaX = point.X - _dragStartPoint.X;
+            var deltaTimeMs = (long)(deltaX / _pixelsPerMs);
+            var newTime = Math.Max(0, _draggingKeyframe.Time + deltaTimeMs / 1000.0);
+
+            // 클립 범위 내로 제한
+            var clipDurationSec = _draggingKeyframeClip.DurationMs / 1000.0;
+            newTime = Math.Clamp(newTime, 0, clipDurationSec);
+
+            _draggingKeyframeSystem.UpdateKeyframe(_draggingKeyframe, newTime, _draggingKeyframe.Value);
+
+            _dragStartPoint = point;
+            InvalidateVisual();
+            e.Handled = true;
+            return;
+        }
+
         // 트림 처리
         if (_isTrimming && _draggingClip != null)
         {
@@ -494,6 +564,18 @@ public class ClipCanvasPanel : Control
         if (_isPanning)
         {
             _isPanning = false;
+            Cursor = Cursor.Default;
+            e.Handled = true;
+            return;
+        }
+
+        // 키프레임 드래그 종료 (최우선)
+        if (_isDraggingKeyframe)
+        {
+            _isDraggingKeyframe = false;
+            _draggingKeyframe = null;
+            _draggingKeyframeSystem = null;
+            _draggingKeyframeClip = null;
             Cursor = Cursor.Default;
             e.Handled = true;
             return;

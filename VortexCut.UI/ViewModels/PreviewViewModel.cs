@@ -110,10 +110,21 @@ public partial class PreviewViewModel : ViewModelBase, IDisposable
     /// <summary>
     /// 재생 타이머 틱
     /// </summary>
-    private void OnPlaybackTick(object? sender, ElapsedEventArgs e)
+    private async void OnPlaybackTick(object? sender, ElapsedEventArgs e)
     {
         CurrentTimeMs += (long)(1000.0 / 30.0);
-        _ = RenderFrameAsync(CurrentTimeMs);
+
+        try
+        {
+            await RenderFrameAsync(CurrentTimeMs);
+        }
+        catch (Exception ex)
+        {
+            // 재생 중 오류 발생 시 재생 중지
+            System.Diagnostics.Debug.WriteLine($"Playback error: {ex.Message}");
+            _playbackTimer.Stop();
+            _isPlaying = false;
+        }
     }
 
     /// <summary>
