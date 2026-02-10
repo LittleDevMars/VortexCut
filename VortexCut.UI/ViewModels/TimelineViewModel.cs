@@ -35,6 +35,9 @@ public partial class TimelineViewModel : ViewModelBase
     [ObservableProperty]
     private ObservableCollection<ClipModel> _selectedClips = new();
 
+    [ObservableProperty]
+    private ObservableCollection<MarkerModel> _markers = new();
+
     // Snap 설정
     [ObservableProperty]
     private bool _snapEnabled = true;
@@ -202,5 +205,38 @@ public partial class TimelineViewModel : ViewModelBase
                 AudioTracks[i].Index = i;
             }
         }
+    }
+
+    /// <summary>
+    /// 마커 추가
+    /// </summary>
+    public void AddMarker(long timeMs, string name = "", MarkerType type = MarkerType.Comment)
+    {
+        var marker = new MarkerModel
+        {
+            Id = (ulong)(Markers.Count + 1),
+            TimeMs = timeMs,
+            Name = name,
+            Type = type
+        };
+        Markers.Add(marker);
+    }
+
+    /// <summary>
+    /// 현재 Playhead 위치에 마커 추가
+    /// </summary>
+    [RelayCommand]
+    public void AddMarkerAtCurrentTime()
+    {
+        AddMarker(CurrentTimeMs, $"Marker {Markers.Count + 1}");
+    }
+
+    /// <summary>
+    /// 마커 제거
+    /// </summary>
+    [RelayCommand]
+    public void RemoveMarker(MarkerModel marker)
+    {
+        Markers.Remove(marker);
     }
 }
