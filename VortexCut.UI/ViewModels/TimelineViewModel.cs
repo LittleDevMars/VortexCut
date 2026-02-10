@@ -7,6 +7,19 @@ using VortexCut.UI.Services;
 namespace VortexCut.UI.ViewModels;
 
 /// <summary>
+/// 키프레임 시스템 타입
+/// </summary>
+public enum KeyframeSystemType
+{
+    Opacity,
+    Volume,
+    PositionX,
+    PositionY,
+    Scale,
+    Rotation
+}
+
+/// <summary>
 /// 타임라인 ViewModel
 /// </summary>
 public partial class TimelineViewModel : ViewModelBase
@@ -48,6 +61,10 @@ public partial class TimelineViewModel : ViewModelBase
     // Razor 모드
     [ObservableProperty]
     private bool _razorModeEnabled = false;
+
+    // 키프레임 시스템 선택
+    [ObservableProperty]
+    private KeyframeSystemType _selectedKeyframeSystem = KeyframeSystemType.Opacity;
 
     // Ripple 편집 모드
     [ObservableProperty]
@@ -238,5 +255,47 @@ public partial class TimelineViewModel : ViewModelBase
     public void RemoveMarker(MarkerModel marker)
     {
         Markers.Remove(marker);
+    }
+
+    /// <summary>
+    /// 클립에서 키프레임 시스템 가져오기
+    /// </summary>
+    private KeyframeSystem? GetKeyframeSystem(ClipModel clip, KeyframeSystemType type)
+    {
+        return type switch
+        {
+            KeyframeSystemType.Opacity => clip.OpacityKeyframes,
+            KeyframeSystemType.Volume => clip.VolumeKeyframes,
+            KeyframeSystemType.PositionX => clip.PositionXKeyframes,
+            KeyframeSystemType.PositionY => clip.PositionYKeyframes,
+            KeyframeSystemType.Scale => clip.ScaleKeyframes,
+            KeyframeSystemType.Rotation => clip.RotationKeyframes,
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// 현재 Playhead 위치에 키프레임 추가 (K 키)
+    /// </summary>
+    [RelayCommand]
+    public void AddKeyframeAtCurrentTime()
+    {
+        if (SelectedClips.Count == 0) return;
+
+        var clip = SelectedClips.First();
+        var keyframeSystem = GetKeyframeSystem(clip, SelectedKeyframeSystem);
+        if (keyframeSystem == null) return;
+
+        // 클립 시작 기준 상대 시간 (초)
+        double relativeTime = (CurrentTimeMs - clip.StartTimeMs) / 1000.0;
+        if (relativeTime < 0 || relativeTime > clip.DurationMs / 1000.0)
+            return; // 클립 범위 밖
+
+        // 현재 보간된 값 사용 (키프레임이 있으면 보간, 없으면 50.0 기본값)
+        double currentValue = keyframeSystem.Keyframes.Count > 0
+            ? keyframeSystem.Interpolate(relativeTime)
+            : 50.0;
+
+        keyframeSystem.AddKeyframe(relativeTime, currentValue, InterpolationType.Linear);
     }
 }

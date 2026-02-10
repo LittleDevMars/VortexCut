@@ -183,6 +183,73 @@ public class ClipCanvasPanel : Control
             Brushes.White);
 
         context.DrawText(text, new Point(x + 5, y + 10));
+
+        // 키프레임 렌더링 (선택된 클립만)
+        if (isSelected && _viewModel != null)
+        {
+            DrawKeyframes(context, clip);
+        }
+    }
+
+    private void DrawKeyframes(DrawingContext context, ClipModel clip)
+    {
+        var keyframeSystem = GetKeyframeSystem(clip, _viewModel.SelectedKeyframeSystem);
+        if (keyframeSystem == null || keyframeSystem.Keyframes.Count == 0) return;
+
+        double clipX = TimeToX(clip.StartTimeMs);
+        double clipY = GetTrackYPosition(clip.TrackIndex);
+        double keyframeY = clipY + 20; // 클립 상단에서 20px
+
+        foreach (var keyframe in keyframeSystem.Keyframes)
+        {
+            double keyframeTimeMs = keyframe.Time * 1000; // 초 → ms
+            double keyframeX = clipX + (keyframeTimeMs * _pixelsPerMs);
+            DrawKeyframeDiamond(context, keyframeX, keyframeY, keyframe.Interpolation);
+        }
+    }
+
+    private KeyframeSystem? GetKeyframeSystem(ClipModel clip, KeyframeSystemType type)
+    {
+        return type switch
+        {
+            KeyframeSystemType.Opacity => clip.OpacityKeyframes,
+            KeyframeSystemType.Volume => clip.VolumeKeyframes,
+            KeyframeSystemType.PositionX => clip.PositionXKeyframes,
+            KeyframeSystemType.PositionY => clip.PositionYKeyframes,
+            KeyframeSystemType.Scale => clip.ScaleKeyframes,
+            KeyframeSystemType.Rotation => clip.RotationKeyframes,
+            _ => null
+        };
+    }
+
+    private void DrawKeyframeDiamond(DrawingContext context, double x, double y, InterpolationType interpolation)
+    {
+        const double Size = 8;
+
+        // 보간 타입에 따라 색상 변경
+        var brush = interpolation switch
+        {
+            InterpolationType.Linear => Brushes.Yellow,
+            InterpolationType.Bezier => Brushes.Cyan,
+            InterpolationType.EaseIn => Brushes.LightGreen,
+            InterpolationType.EaseOut => Brushes.LightBlue,
+            InterpolationType.EaseInOut => Brushes.Orange,
+            InterpolationType.Hold => Brushes.Red,
+            _ => Brushes.Yellow
+        };
+
+        // 다이아몬드 그리기
+        var geometry = new StreamGeometry();
+        using (var ctx = geometry.Open())
+        {
+            ctx.BeginFigure(new Point(x, y - Size / 2), true); // 상단
+            ctx.LineTo(new Point(x + Size / 2, y)); // 오른쪽
+            ctx.LineTo(new Point(x, y + Size / 2)); // 하단
+            ctx.LineTo(new Point(x - Size / 2, y)); // 왼쪽
+            ctx.EndFigure(true);
+        }
+
+        context.DrawGeometry(brush, new Pen(Brushes.Black, 1), geometry);
     }
 
     private void DrawPlayhead(DrawingContext context)
