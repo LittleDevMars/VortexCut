@@ -2,18 +2,22 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="720"
+        xmlns:vm="clr-namespace:VortexCut.UI.ViewModels"
+        xmlns:views="clr-namespace:VortexCut.UI.Views"
+        xmlns:controls="clr-namespace:VortexCut.UI.Controls"
+        mc:Ignorable="d" d:DesignWidth="1600" d:DesignHeight="900"
         x:Class="VortexCut.UI.Views.MainWindow"
-        Title="VortexCut - Video Editor"
-        Width="1280" Height="720"
-        MinWidth="800" MinHeight="600">
+        x:DataType="vm:MainViewModel"
+        Title="VortexCut - Professional Video Editor"
+        Width="1600" Height="900"
+        MinWidth="1024" MinHeight="600">
 
     <DockPanel LastChildFill="True">
         <!-- Menu Bar -->
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="파일">
-                <MenuItem Header="새 프로젝트" />
-                <MenuItem Header="열기" />
+                <MenuItem Header="새 프로젝트" Command="{Binding CreateNewProjectCommand}" />
+                <MenuItem Header="비디오 가져오기" Command="{Binding OpenVideoFileCommand}" />
                 <MenuItem Header="저장" />
                 <Separator />
                 <MenuItem Header="내보내기" />
@@ -21,113 +25,212 @@
                 <MenuItem Header="종료" />
             </MenuItem>
             <MenuItem Header="편집">
-                <MenuItem Header="실행 취소" />
-                <MenuItem Header="다시 실행" />
+                <MenuItem Header="실행 취소 (Ctrl+Z)" />
+                <MenuItem Header="다시 실행 (Ctrl+Y)" />
                 <Separator />
-                <MenuItem Header="잘라내기" />
-                <MenuItem Header="복사" />
-                <MenuItem Header="붙여넣기" />
+                <MenuItem Header="분할 (S)" />
+                <MenuItem Header="삭제 (Del)" />
             </MenuItem>
             <MenuItem Header="보기">
-                <MenuItem Header="프리뷰 창" />
+                <MenuItem Header="Project Bin" />
                 <MenuItem Header="타임라인" />
-                <MenuItem Header="속성 패널" />
+                <MenuItem Header="Effects" />
             </MenuItem>
         </Menu>
 
-        <!-- Main Content Grid -->
+        <!-- Main Content -->
         <Grid>
             <Grid.RowDefinitions>
-                <!-- Top Area (Preview + Properties) -->
+                <!-- Top: Project Bin + Monitors + Effects -->
                 <RowDefinition Height="2*" />
-                <!-- Splitter -->
                 <RowDefinition Height="5" />
-                <!-- Timeline Area -->
+                <!-- Bottom: Timeline -->
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
             <!-- Top Area -->
             <Grid Grid.Row="0">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
+                    <!-- Project Bin -->
+                    <ColumnDefinition Width="300" MinWidth="200" />
                     <ColumnDefinition Width="5" />
-                    <ColumnDefinition Width="300" />
+                    <!-- Monitors (Clip + Project) -->
+                    <ColumnDefinition Width="3*" MinWidth="400" />
+                    <ColumnDefinition Width="5" />
+                    <!-- Effects/Properties -->
+                    <ColumnDefinition Width="300" MinWidth="200" />
                 </Grid.ColumnDefinitions>
 
-                <!-- Preview Panel -->
-                <Border Grid.Column="0" Background="#1E1E1E" Padding="10">
-                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <TextBlock Text="프리뷰 영역"
-                                   Foreground="White"
-                                   FontSize="24"
-                                   HorizontalAlignment="Center"/>
-                        <Rectangle Width="640" Height="360"
-                                   Fill="Black"
-                                   Margin="0,10,0,0" />
-                        <StackPanel Orientation="Horizontal"
-                                    HorizontalAlignment="Center"
-                                    Margin="0,10,0,0">
-                            <Button Content="◀◀" Margin="5,0" />
-                            <Button Content="▶" Margin="5,0" />
-                            <Button Content="▶▶" Margin="5,0" />
-                            <Button Content="⏹" Margin="5,0" />
-                        </StackPanel>
-                    </StackPanel>
-                </Border>
+                <!-- Project Bin -->
+                <views:ProjectBinView Grid.Column="0"
+                                      DataContext="{Binding ProjectBin}" />
 
-                <!-- Column Splitter -->
-                <GridSplitter Grid.Column="1"
-                              Background="#444"
-                              ResizeDirection="Columns" />
+                <GridSplitter Grid.Column="1" Background="#444" ResizeDirection="Columns" />
 
-                <!-- Properties Panel -->
-                <Border Grid.Column="2" Background="#252526" Padding="10">
-                    <StackPanel>
-                        <TextBlock Text="속성 패널"
-                                   Foreground="White"
-                                   FontSize="16"
-                                   Margin="0,0,0,10"/>
-                        <TextBlock Text="클립 정보:"
-                                   Foreground="White"
-                                   FontSize="12"
-                                   Margin="0,0,0,5"/>
-                        <TextBlock Text="선택된 클립 없음"
-                                   Foreground="Gray"
-                                   FontSize="11" />
-                    </StackPanel>
+                <!-- Dual Monitors Area -->
+                <Grid Grid.Column="2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="5" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Clip Monitor -->
+                    <Border Grid.Column="0" Background="#1E1E1E">
+                        <DockPanel>
+                            <!-- Header -->
+                            <Border DockPanel.Dock="Top" Background="#2D2D30" Padding="10,5">
+                                <TextBlock Text="Clip Monitor"
+                                           Foreground="White"
+                                           FontSize="14"
+                                           FontWeight="Bold"/>
+                            </Border>
+
+                            <!-- Preview -->
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Border Background="Black" Margin="10">
+                                    <Image Width="400" Height="225"
+                                           Stretch="Uniform" />
+                                </Border>
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+
+                    <GridSplitter Grid.Column="1" Background="#444" ResizeDirection="Columns" />
+
+                    <!-- Project Monitor -->
+                    <Border Grid.Column="2" Background="#1E1E1E">
+                        <DockPanel>
+                            <!-- Header -->
+                            <Border DockPanel.Dock="Top" Background="#2D2D30" Padding="10,5">
+                                <TextBlock Text="Project Monitor"
+                                           Foreground="White"
+                                           FontSize="14"
+                                           FontWeight="Bold"/>
+                            </Border>
+
+                            <!-- Preview -->
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Border Background="Black" Margin="10">
+                                    <Image Source="{Binding Preview.PreviewImage}"
+                                           Width="400" Height="225"
+                                           Stretch="Uniform" />
+                                </Border>
+
+                                <!-- Playback Controls -->
+                                <StackPanel Orientation="Horizontal"
+                                            HorizontalAlignment="Center"
+                                            Margin="0,10,0,0">
+                                    <Button Content="⏮" Width="40" Margin="2" />
+                                    <Button Content="⏪" Width="40" Margin="2" />
+                                    <Button Content="▶" Width="40" Margin="2"
+                                            Command="{Binding PlayPauseCommand}" />
+                                    <Button Content="⏩" Width="40" Margin="2" />
+                                    <Button Content="⏭" Width="40" Margin="2" />
+                                    <Button Content="⏹" Width="40" Margin="2" />
+                                </StackPanel>
+
+                                <!-- Timecode -->
+                                <TextBlock Text="{Binding Preview.CurrentTimeMs, StringFormat='{}{0} ms'}"
+                                           Foreground="LightGray"
+                                           FontSize="14"
+                                           FontFamily="Consolas"
+                                           HorizontalAlignment="Center"
+                                           Margin="0,10,0,0"/>
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+                </Grid>
+
+                <GridSplitter Grid.Column="3" Background="#444" ResizeDirection="Columns" />
+
+                <!-- Effects/Properties Panel -->
+                <Border Grid.Column="4" Background="#252526">
+                    <DockPanel>
+                        <Border DockPanel.Dock="Top" Background="#2D2D30" Padding="10,5">
+                            <TextBlock Text="Properties / Effects"
+                                       Foreground="White"
+                                       FontSize="14"
+                                       FontWeight="Bold"/>
+                        </Border>
+
+                        <ScrollViewer>
+                            <StackPanel Margin="10">
+                                <TextBlock Text="클립 속성"
+                                           Foreground="White"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Margin="0,0,0,10"/>
+
+                                <TextBlock Text="선택된 클립 없음"
+                                           Foreground="Gray"
+                                           FontSize="11" />
+
+                                <Separator Margin="0,20,0,10" Background="#444" />
+
+                                <TextBlock Text="Effects"
+                                           Foreground="White"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Margin="0,0,0,10"/>
+
+                                <ListBox Background="Transparent">
+                                    <ListBoxItem Content="Transform" />
+                                    <ListBoxItem Content="Color Correction" />
+                                    <ListBoxItem Content="Blur" />
+                                    <ListBoxItem Content="Fade In/Out" />
+                                </ListBox>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </DockPanel>
                 </Border>
             </Grid>
 
-            <!-- Row Splitter -->
-            <GridSplitter Grid.Row="1"
-                          Background="#444"
-                          ResizeDirection="Rows" />
+            <!-- Splitter -->
+            <GridSplitter Grid.Row="1" Background="#444" ResizeDirection="Rows" />
 
-            <!-- Timeline Panel -->
-            <Border Grid.Row="2" Background="#1E1E1E" Padding="10">
-                <StackPanel>
-                    <TextBlock Text="타임라인"
-                               Foreground="White"
-                               FontSize="16"
-                               Margin="0,0,0,10"/>
+            <!-- Timeline Area -->
+            <Border Grid.Row="2" Background="#1E1E1E">
+                <DockPanel>
+                    <!-- Timeline Toolbar -->
+                    <Border DockPanel.Dock="Top" Background="#2D2D30" Padding="5">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="Timeline"
+                                       Foreground="White"
+                                       FontSize="14"
+                                       FontWeight="Bold"
+                                       VerticalAlignment="Center"
+                                       Margin="5,0"/>
+
+                            <Separator Width="1" Background="#555" />
+
+                            <Button Content="🔍+" Width="35" ToolTip.Tip="Zoom In" />
+                            <Button Content="🔍-" Width="35" ToolTip.Tip="Zoom Out" />
+
+                            <Separator Width="1" Background="#555" />
+
+                            <ToggleButton Content="🧲" Width="35" ToolTip.Tip="Snap" />
+                            <ToggleButton Content="✂" Width="35" ToolTip.Tip="Razor Tool" />
+
+                            <Separator Width="1" Background="#555" />
+
+                            <TextBlock Text="Clips:"
+                                       Foreground="LightGray"
+                                       VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding Timeline.Clips.Count}"
+                                       Foreground="White"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Timeline Canvas -->
                     <ScrollViewer HorizontalScrollBarVisibility="Auto"
                                   VerticalScrollBarVisibility="Auto">
-                        <StackPanel>
-                            <TextBlock Text="비디오 트랙 1"
-                                       Foreground="White"
-                                       Margin="0,5"/>
-                            <Rectangle Height="60"
-                                       Fill="#2D2D30"
-                                       Margin="0,0,0,10" />
-                            <TextBlock Text="오디오 트랙 1"
-                                       Foreground="White"
-                                       Margin="0,5"/>
-                            <Rectangle Height="40"
-                                       Fill="#2D2D30"
-                                       Margin="0,0,0,10" />
-                        </StackPanel>
+                        <controls:TimelineCanvas x:Name="TimelineCanvas"
+                                                 Width="2000"
+                                                 Height="400" />
                     </ScrollViewer>
-                </StackPanel>
+                </DockPanel>
             </Border>
         </Grid>
     </DockPanel>

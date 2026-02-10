@@ -1,0 +1,57 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:VortexCut.UI.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="450"
+             x:Class="VortexCut.UI.Views.ProjectBinView"
+             x:DataType="vm:ProjectBinViewModel">
+
+    <DockPanel>
+        <!-- Header -->
+        <Border DockPanel.Dock="Top" Background="#2D2D30" Padding="10,5">
+            <TextBlock Text="Project Bin"
+                       Foreground="White"
+                       FontSize="14"
+                       FontWeight="Bold"/>
+        </Border>
+
+        <!-- Media List -->
+        <ListBox ItemsSource="{Binding MediaItems}"
+                 SelectedItem="{Binding SelectedItem}"
+                 Background="#1E1E1E">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <Border Padding="5" Margin="2">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <!-- Thumbnail Placeholder -->
+                            <Border Width="80" Height="45" Background="#3E3E42">
+                                <TextBlock Text="📹"
+                                           FontSize="24"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
+                            </Border>
+
+                            <!-- Info -->
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Name}"
+                                           Foreground="White"
+                                           FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding FilePath}"
+                                           Foreground="Gray"
+                                           FontSize="10"
+                                           TextTrimming="CharacterEllipsis"
+                                           MaxWidth="150"/>
+                                <TextBlock Foreground="LightGray" FontSize="10">
+                                    <Run Text="{Binding Width}"/>x<Run Text="{Binding Height}"/>
+                                    <Run Text=" "/>
+                                    <Run Text="{Binding DurationMs}"/>ms
+                                </TextBlock>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </DockPanel>
+</UserControl>
