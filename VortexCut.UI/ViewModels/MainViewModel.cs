@@ -13,6 +13,7 @@ public partial class MainViewModel : ViewModelBase
 {
     private readonly ProjectService _projectService;
     private IStorageProvider? _storageProvider;
+    private bool _isInitialized = false;
 
     [ObservableProperty]
     private ProjectBinViewModel _projectBin;
@@ -32,9 +33,18 @@ public partial class MainViewModel : ViewModelBase
         _projectBin = new ProjectBinViewModel();
         _timeline = new TimelineViewModel(_projectService);
         _preview = new PreviewViewModel(_projectService);
+    }
 
-        // 기본 프로젝트 생성
-        CreateNewProject();
+    /// <summary>
+    /// 초기화 (Window Opened에서 한 번만 호출)
+    /// </summary>
+    public void Initialize()
+    {
+        if (!_isInitialized)
+        {
+            CreateNewProject();
+            _isInitialized = true;
+        }
     }
 
     /// <summary>
@@ -52,6 +62,7 @@ public partial class MainViewModel : ViewModelBase
         ProjectName = "New Project";
         Timeline.Reset();
         Preview.Reset();
+        ProjectBin.Clear();
     }
 
     [RelayCommand]

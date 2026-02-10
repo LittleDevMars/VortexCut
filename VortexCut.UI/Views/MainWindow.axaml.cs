@@ -13,10 +13,11 @@ public partial class MainWindow : Window
         _viewModel = new MainViewModel();
         DataContext = _viewModel;
 
-        // StorageProvider 설정
+        // StorageProvider 설정 및 초기화
         Opened += (sender, e) =>
         {
             _viewModel.SetStorageProvider(StorageProvider);
+            _viewModel.Initialize(); // 첫 프로젝트 생성
             InitializeTimeline();
         };
     }
