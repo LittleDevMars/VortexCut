@@ -1,0 +1,61 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:controls="using:VortexCut.UI.Controls.Timeline"
+             mc:Ignorable="d" d:DesignWidth="60" d:DesignHeight="60"
+             x:Class="VortexCut.UI.Controls.Timeline.TrackHeaderControl"
+             x:DataType="controls:TrackHeaderControl">
+
+    <Border BorderBrush="#444444" BorderThickness="0,0,1,1" Background="#252526">
+        <Grid RowDefinitions="Auto,*,Auto">
+            <!-- 트랙 이름 -->
+            <TextBox Grid.Row="0"
+                     Name="TrackNameTextBox"
+                     Text="{Binding Track.Name}"
+                     FontSize="11"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     Padding="4,2"
+                     HorizontalAlignment="Center"/>
+
+            <!-- 버튼 영역 -->
+            <StackPanel Grid.Row="1" Orientation="Vertical" Spacing="2" Margin="4">
+                <!-- Mute 버튼 -->
+                <ToggleButton Name="MuteButton"
+                              IsChecked="{Binding Track.IsMuted}"
+                              Content="M"
+                              Width="50" Height="20"
+                              FontSize="10"
+                              Padding="0"
+                              ToolTip.Tip="Mute"/>
+
+                <!-- Solo 버튼 (Phase 2B) -->
+                <ToggleButton Name="SoloButton"
+                              Content="S"
+                              Width="50" Height="20"
+                              FontSize="10"
+                              Padding="0"
+                              ToolTip.Tip="Solo"
+                              IsVisible="False"/>
+
+                <!-- Lock 버튼 -->
+                <ToggleButton Name="LockButton"
+                              IsChecked="{Binding Track.IsLocked}"
+                              Content="🔒"
+                              Width="50" Height="20"
+                              FontSize="10"
+                              Padding="0"
+                              ToolTip.Tip="Lock"/>
+            </StackPanel>
+
+            <!-- 높이 조절 그립 (Phase 2A 후반) -->
+            <Border Grid.Row="2"
+                    Name="ResizeGrip"
+                    Height="4"
+                    Background="#007ACC"
+                    Cursor="SizeNorthSouth"
+                    ToolTip.Tip="Drag to resize track"/>
+        </Grid>
+    </Border>
+</UserControl>
