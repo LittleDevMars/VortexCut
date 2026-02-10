@@ -58,6 +58,10 @@ public class ClipCanvasPanel : Control
     // 애니메이션 (선택 펄스 효과)
     private double _selectionPulsePhase = 0;
 
+    // 재생 헤드 자동 스크롤
+    private bool _followPlayhead = true;
+    private long _lastPlayheadTimeMs = 0;
+
     public ClipCanvasPanel()
     {
         ClipToBounds = true;
@@ -129,6 +133,36 @@ public class ClipCanvasPanel : Control
             // 선택된 클립이 있으면 애니메이션 계속 (다음 프레임 요청)
             if (_viewModel?.SelectedClips.Count > 0)
             {
+                Dispatcher.UIThread.Post(InvalidateVisual, Avalonia.Threading.DispatcherPriority.Render);
+            }
+
+            // 재생 헤드 자동 스크롤 (Playhead Follow)
+            if (_viewModel != null && _followPlayhead && _viewModel.IsPlaying)
+            {
+                long currentPlayheadTime = _viewModel.CurrentTimeMs;
+                if (currentPlayheadTime != _lastPlayheadTimeMs)
+                {
+                    _lastPlayheadTimeMs = currentPlayheadTime;
+
+                    // Playhead가 화면 밖으로 나가면 스크롤
+                    double playheadX = TimeToX(currentPlayheadTime);
+                    double viewportWidth = Bounds.Width;
+
+                    // Playhead가 화면 오른쪽 80%를 넘으면 스크롤
+                    if (playheadX > viewportWidth * 0.8)
+                    {
+                        _scrollOffsetX += (playheadX - viewportWidth * 0.5);
+                        // 부모 TimelineCanvas에 스크롤 업데이트 알림 (TODO)
+                    }
+                    // Playhead가 화면 왼쪽으로 나가면 스크롤
+                    else if (playheadX < viewportWidth * 0.2 && _scrollOffsetX > 0)
+                    {
+                        _scrollOffsetX -= (viewportWidth * 0.5 - playheadX);
+                        _scrollOffsetX = Math.Max(0, _scrollOffsetX);
+                    }
+                }
+
+                // 재생 중에는 계속 갱신
                 Dispatcher.UIThread.Post(InvalidateVisual, Avalonia.Threading.DispatcherPriority.Render);
             }
         }
@@ -1333,6 +1367,62 @@ public class ClipCanvasPanel : Control
             null,
             new Pen(new SolidColorBrush(Color.FromRgb(255, 220, 80)), 2.5),
             snapIconGeometry);
+
+        // 시간 델타 표시 (Snap 위치와 드래그 중인 클립의 시간 차이)
+        if (_draggingClip != null && _viewModel != null)
+        {
+            long dragTime = _draggingClip.StartTimeMs;
+            long snapTime = timeMs;
+            long deltaMs = snapTime - dragTime;
+
+            // 델타가 0이 아닐 때만 표시
+            if (deltaMs != 0)
+            {
+                string deltaText = deltaMs > 0
+                    ? $"+{FormatTime(Math.Abs(deltaMs))}"
+                    : $"-{FormatTime(Math.Abs(deltaMs))}";
+
+                var typeface = new Typeface("Segoe UI", FontStyle.Normal, FontWeight.Bold);
+                var formattedText = new FormattedText(
+                    deltaText,
+                    System.Globalization.CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight,
+                    typeface,
+                    11,
+                    Brushes.White);
+
+                // 배경 박스 (반투명 검정)
+                var textRect = new Rect(
+                    x - formattedText.Width / 2 - 6,
+                    30,
+                    formattedText.Width + 12,
+                    formattedText.Height + 6);
+
+                context.FillRectangle(
+                    new SolidColorBrush(Color.FromArgb(200, 0, 0, 0)),
+                    textRect);
+
+                // 테두리 (황금색)
+                context.DrawRectangle(
+                    null,
+                    new Pen(new SolidColorBrush(Color.FromRgb(255, 220, 80)), 1.5),
+                    textRect);
+
+                // 텍스트
+                context.DrawText(
+                    formattedText,
+                    new Point(x - formattedText.Width / 2, 33));
+            }
+        }
+    }
+
+    /// <summary>
+    /// 시간을 사람이 읽을 수 있는 형식으로 변환 (초.밀리초)
+    /// </summary>
+    private string FormatTime(long ms)
+    {
+        double seconds = ms / 1000.0;
+        return $"{seconds:F2}s";
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
