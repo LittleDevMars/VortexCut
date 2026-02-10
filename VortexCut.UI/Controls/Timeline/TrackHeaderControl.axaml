@@ -7,20 +7,41 @@
              x:Class="VortexCut.UI.Controls.Timeline.TrackHeaderControl"
              x:DataType="controls:TrackHeaderControl">
 
-    <Border BorderBrush="#444444" BorderThickness="0,0,1,1" Background="#252526">
-        <Grid RowDefinitions="Auto,*,Auto">
+    <Border BorderBrush="#444444" BorderThickness="0,0,1,1">
+        <Border.Background>
+            <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                <GradientStop Color="#2D2D30" Offset="0"/>
+                <GradientStop Color="#252527" Offset="1"/>
+            </LinearGradientBrush>
+        </Border.Background>
+        <Grid RowDefinitions="Auto,Auto,*,Auto">
+            <!-- 트랙 번호/타입 배지 -->
+            <Border Grid.Row="0"
+                    Background="#007ACC"
+                    Padding="4,2"
+                    CornerRadius="0,0,8,8"
+                    HorizontalAlignment="Center"
+                    Margin="0,0,0,4">
+                <TextBlock Text="{Binding Track.Index}"
+                           FontSize="10"
+                           FontWeight="Bold"
+                           Foreground="White"
+                           HorizontalAlignment="Center"/>
+            </Border>
+
             <!-- 트랙 이름 -->
-            <TextBox Grid.Row="0"
+            <TextBox Grid.Row="1"
                      Name="TrackNameTextBox"
                      Text="{Binding Track.Name}"
                      FontSize="11"
+                     FontWeight="SemiBold"
                      Background="Transparent"
                      BorderThickness="0"
                      Padding="4,2"
                      HorizontalAlignment="Center"/>
 
             <!-- 버튼 영역 -->
-            <StackPanel Grid.Row="1" Orientation="Vertical" Spacing="2" Margin="4">
+            <StackPanel Grid.Row="2" Orientation="Vertical" Spacing="2" Margin="4">
                 <!-- Mute 버튼 -->
                 <ToggleButton Name="MuteButton"
                               IsChecked="{Binding Track.IsMuted}"
@@ -50,7 +71,7 @@
             </StackPanel>
 
             <!-- 높이 조절 그립 (Phase 2A 후반) -->
-            <Border Grid.Row="2"
+            <Border Grid.Row="3"
                     Name="ResizeGrip"
                     Height="4"
                     Background="#007ACC"

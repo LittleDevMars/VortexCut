@@ -33,6 +33,7 @@ public class ClipCanvasPanel : Control
     private double _scrollOffsetX = 0;
     private ClipModel? _selectedClip;
     private ClipModel? _draggingClip;
+    private ClipModel? _hoveredClip;  // 호버된 클립
     private Point _dragStartPoint;
     private bool _isDragging;
     private bool _isPanning;
@@ -196,11 +197,12 @@ public class ClipCanvasPanel : Control
         foreach (var clip in _clips)
         {
             bool isSelected = _viewModel?.SelectedClips.Contains(clip) ?? false;
-            DrawClip(context, clip, isSelected);
+            bool isHovered = clip == _hoveredClip;
+            DrawClip(context, clip, isSelected, isHovered);
         }
     }
 
-    private void DrawClip(DrawingContext context, ClipModel clip, bool isSelected)
+    private void DrawClip(DrawingContext context, ClipModel clip, bool isSelected, bool isHovered)
     {
         double x = TimeToX(clip.StartTimeMs);
         double width = DurationToWidth(clip.DurationMs);
@@ -283,6 +285,18 @@ public class ClipCanvasPanel : Control
             context.FillRectangle(glowBrush2, glowRect2);
         }
 
+        // 호버 효과 (선택되지 않은 클립만)
+        if (isHovered && !isSelected)
+        {
+            var hoverRect = new Rect(
+                clipRect.X - 1,
+                clipRect.Y - 1,
+                clipRect.Width + 2,
+                clipRect.Height + 2);
+            var hoverBrush = new SolidColorBrush(Color.FromArgb(40, 0, 122, 204)); // 미묘한 파란색
+            context.FillRectangle(hoverBrush, hoverRect);
+        }
+
         // 오디오 웨이브폼 (간단한 시뮬레이션)
         if (isAudioClip && width > 50)
         {
@@ -316,6 +330,33 @@ public class ClipCanvasPanel : Control
                 rightHandleRect);
         }
 
+        // 클립 타입 아이콘 (좌측 상단)
+        if (width > 30)
+        {
+            var iconText = isAudioClip ? "🔊" : "🎬";
+            var iconFormatted = new FormattedText(
+                iconText,
+                System.Globalization.CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                new Typeface("Segoe UI", FontStyle.Normal, FontWeight.Normal),
+                14,
+                Brushes.White);
+
+            // 아이콘 배경 (작은 원형 배지)
+            var iconBgRect = new Rect(x + 4, y + 4, 20, 20);
+            var iconBgBrush = new RadialGradientBrush
+            {
+                Center = new RelativePoint(0.5, 0.5, RelativeUnit.Relative),
+                GradientStops = new GradientStops
+                {
+                    new GradientStop(Color.FromArgb(200, 0, 0, 0), 0),
+                    new GradientStop(Color.FromArgb(150, 0, 0, 0), 1)
+                }
+            };
+            context.FillRectangle(iconBgBrush, iconBgRect);
+            context.DrawText(iconFormatted, new Point(x + 7, y + 5));
+        }
+
         // 클립 이름 (가독성 개선)
         if (width > 40) // 너무 좁은 클립은 텍스트 생략
         {
@@ -327,20 +368,29 @@ public class ClipCanvasPanel : Control
                 fileName,
                 System.Globalization.CultureInfo.CurrentCulture,
                 FlowDirection.LeftToRight,
-                new Typeface("Segoe UI", FontStyle.Normal, FontWeight.SemiBold),
+                new Typeface("Segoe UI", FontStyle.Normal, FontWeight.Bold),
                 12,
                 Brushes.White);
 
-            // 텍스트 배경 (반투명 검은색)
-            var textBgRect = new Rect(x + 4, y + 8, text.Width + 6, text.Height + 4);
-            context.FillRectangle(
-                new SolidColorBrush(Color.FromArgb(180, 0, 0, 0)),
-                textBgRect);
+            // 텍스트 배경 (더 선명한 그라디언트)
+            var textBgRect = new Rect(x + 28, y + 6, text.Width + 8, text.Height + 6);
+            var textBgGradient = new LinearGradientBrush
+            {
+                StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+                EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative),
+                GradientStops = new GradientStops
+                {
+                    new GradientStop(Color.FromArgb(200, 0, 0, 0), 0),
+                    new GradientStop(Color.FromArgb(150, 0, 0, 0), 0.8),
+                    new GradientStop(Color.FromArgb(0, 0, 0, 0), 1)
+                }
+            };
+            context.FillRectangle(textBgGradient, textBgRect);
 
             // 텍스트
-            context.DrawText(text, new Point(x + 7, y + 10));
+            context.DrawText(text, new Point(x + 32, y + 9));
 
-            // 클립 지속시간 표시 (우측 상단)
+            // 클립 지속시간 표시 (우측 상단 - 더 선명하게)
             if (width > 100)
             {
                 var duration = TimeSpan.FromMilliseconds(clip.DurationMs);
@@ -349,16 +399,25 @@ public class ClipCanvasPanel : Control
                     durationText,
                     System.Globalization.CultureInfo.CurrentCulture,
                     FlowDirection.LeftToRight,
-                    new Typeface("Segoe UI", FontStyle.Normal, FontWeight.Normal),
-                    10,
-                    new SolidColorBrush(Color.FromArgb(200, 255, 255, 255)));
+                    new Typeface("Segoe UI", FontStyle.Normal, FontWeight.Bold),
+                    11,
+                    new SolidColorBrush(Color.FromRgb(255, 220, 80)));
 
-                var durationX = x + width - durationFormatted.Width - 7;
-                var durationBgRect = new Rect(durationX - 3, y + 8, durationFormatted.Width + 6, durationFormatted.Height + 4);
-                context.FillRectangle(
-                    new SolidColorBrush(Color.FromArgb(180, 0, 0, 0)),
-                    durationBgRect);
-                context.DrawText(durationFormatted, new Point(durationX, y + 10));
+                var durationX = x + width - durationFormatted.Width - 10;
+                var durationBgRect = new Rect(durationX - 4, y + 6, durationFormatted.Width + 8, durationFormatted.Height + 6);
+                var durationBgGradient = new LinearGradientBrush
+                {
+                    StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+                    EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative),
+                    GradientStops = new GradientStops
+                    {
+                        new GradientStop(Color.FromArgb(0, 0, 0, 0), 0),
+                        new GradientStop(Color.FromArgb(150, 0, 0, 0), 0.2),
+                        new GradientStop(Color.FromArgb(200, 0, 0, 0), 1)
+                    }
+                };
+                context.FillRectangle(durationBgGradient, durationBgRect);
+                context.DrawText(durationFormatted, new Point(durationX, y + 9));
             }
         }
 
@@ -888,6 +947,17 @@ public class ClipCanvasPanel : Control
 
             _dragStartPoint = point;
             InvalidateVisual();
+        }
+
+        // 호버 감지 (드래그/트림/팬 중이 아닐 때)
+        if (!_isDragging && !_isTrimming && !_isPanning && !_isDraggingKeyframe)
+        {
+            var hoveredClip = GetClipAtPosition(point);
+            if (hoveredClip != _hoveredClip)
+            {
+                _hoveredClip = hoveredClip;
+                InvalidateVisual();
+            }
         }
     }
 
