@@ -52,6 +52,7 @@ public partial class TimelineViewModel : ViewModelBase
 
     public RazorTool? RazorTool { get; private set; }
     public RippleEditService? RippleEditService { get; private set; }
+    public LinkClipService? LinkClipService { get; private set; }
 
     public TimelineViewModel(ProjectService projectService)
     {
@@ -59,6 +60,7 @@ public partial class TimelineViewModel : ViewModelBase
         InitializeDefaultTracks();
         RazorTool = new RazorTool(this);
         RippleEditService = new RippleEditService(this);
+        LinkClipService = new LinkClipService(this);
     }
 
     /// <summary>

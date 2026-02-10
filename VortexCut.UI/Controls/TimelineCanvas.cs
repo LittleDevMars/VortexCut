@@ -10,6 +10,7 @@ namespace VortexCut.UI.Controls;
 /// </summary>
 public class TimelineCanvas : Grid
 {
+    private readonly TimelineMinimap _minimap;
     private readonly TimelineHeader _timelineHeader;
     private readonly TrackListPanel _trackListPanel;
     private readonly ClipCanvasPanel _clipCanvasPanel;
@@ -30,6 +31,7 @@ public class TimelineCanvas : Grid
             _viewModel = value;
             if (_viewModel != null)
             {
+                _minimap.SetViewModel(_viewModel);
                 _timelineHeader.SetViewModel(_viewModel);
                 _clipCanvasPanel.SetViewModel(_viewModel);
                 _trackListPanel.SetTracks(_viewModel.VideoTracks, _viewModel.AudioTracks);
@@ -45,10 +47,11 @@ public class TimelineCanvas : Grid
     public TimelineCanvas()
     {
         // Grid 레이아웃 설정
-        RowDefinitions = new RowDefinitions("80,*"); // Header 80px, 나머지는 트랙
+        RowDefinitions = new RowDefinitions("20,60,*"); // Minimap 20px, Header 60px, 나머지는 트랙
         ColumnDefinitions = new ColumnDefinitions("60,*"); // 트랙 헤더 60px, 나머지는 클립
 
         // 컴포넌트 생성
+        _minimap = new TimelineMinimap();
         _timelineHeader = new TimelineHeader();
         _trackListPanel = new TrackListPanel();
         _clipCanvasPanel = new ClipCanvasPanel();
@@ -62,18 +65,23 @@ public class TimelineCanvas : Grid
         };
 
         // Grid 배치
-        // Row 0: TimelineHeader (전체 컬럼 병합)
-        _timelineHeader.SetValue(ColumnSpanProperty, 2);
-        _timelineHeader.SetValue(RowProperty, 0);
+        // Row 0: Minimap (전체 컬럼 병합)
+        _minimap.SetValue(ColumnSpanProperty, 2);
+        _minimap.SetValue(RowProperty, 0);
 
-        // Row 1, Column 0: TrackListPanel
-        _trackListPanel.SetValue(RowProperty, 1);
+        // Row 1: TimelineHeader (전체 컬럼 병합)
+        _timelineHeader.SetValue(ColumnSpanProperty, 2);
+        _timelineHeader.SetValue(RowProperty, 1);
+
+        // Row 2, Column 0: TrackListPanel
+        _trackListPanel.SetValue(RowProperty, 2);
         _trackListPanel.SetValue(ColumnProperty, 0);
 
-        // Row 1, Column 1: ClipCanvasPanel (ScrollViewer로 감싸기)
-        _scrollViewer.SetValue(RowProperty, 1);
+        // Row 2, Column 1: ClipCanvasPanel (ScrollViewer로 감싸기)
+        _scrollViewer.SetValue(RowProperty, 2);
         _scrollViewer.SetValue(ColumnProperty, 1);
 
+        Children.Add(_minimap);
         Children.Add(_timelineHeader);
         Children.Add(_trackListPanel);
         Children.Add(_scrollViewer);
