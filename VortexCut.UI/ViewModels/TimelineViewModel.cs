@@ -46,13 +46,19 @@ public partial class TimelineViewModel : ViewModelBase
     [ObservableProperty]
     private bool _razorModeEnabled = false;
 
+    // Ripple 편집 모드
+    [ObservableProperty]
+    private bool _rippleModeEnabled = false;
+
     public RazorTool? RazorTool { get; private set; }
+    public RippleEditService? RippleEditService { get; private set; }
 
     public TimelineViewModel(ProjectService projectService)
     {
         _projectService = projectService;
         InitializeDefaultTracks();
         RazorTool = new RazorTool(this);
+        RippleEditService = new RippleEditService(this);
     }
 
     /// <summary>
@@ -122,7 +128,16 @@ public partial class TimelineViewModel : ViewModelBase
     {
         if (SelectedClip != null)
         {
-            Clips.Remove(SelectedClip);
+            if (RippleModeEnabled && RippleEditService != null)
+            {
+                // 리플 모드: 삭제 후 이후 클립 자동 이동
+                RippleEditService.RippleDelete(SelectedClip);
+            }
+            else
+            {
+                // 일반 모드: 그냥 삭제
+                Clips.Remove(SelectedClip);
+            }
             SelectedClip = null;
         }
     }

@@ -20,6 +20,7 @@
   <ItemGroup>
     <ProjectReference Include="..\VortexCut.Core\VortexCut.Core.csproj" />
     <ProjectReference Include="..\VortexCut.Interop\VortexCut.Interop.csproj" />
+    <ProjectReference Include="..\VortexCut.UI\VortexCut.UI.csproj" />
   </ItemGroup>
 
 </Project>
