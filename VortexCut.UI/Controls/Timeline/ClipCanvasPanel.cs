@@ -409,6 +409,22 @@ public class ClipCanvasPanel : Control
             }
         }
 
+        // 트랙 뮤트/솔로 상태 확인 및 색상 조정
+        bool isTrackMuted = track.IsMuted;
+        bool isTrackSolo = _viewModel != null && (
+            _videoTracks.Any(t => t.IsSolo && t.Type == TrackType.Video) ||
+            _audioTracks.Any(t => t.IsSolo && t.Type == TrackType.Audio));
+
+        // 트랙이 뮤트되었거나, 다른 트랙이 솔로인 경우 어둡게 처리
+        bool shouldDimClip = isTrackMuted || (isTrackSolo && !track.IsSolo);
+
+        if (shouldDimClip)
+        {
+            // 50% 어둡게
+            topColor = DarkenColor(topColor, 0.5);
+            bottomColor = DarkenColor(bottomColor, 0.5);
+        }
+
         var gradientBrush = new LinearGradientBrush
         {
             StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
@@ -650,6 +666,62 @@ public class ClipCanvasPanel : Control
         if (width > 30)
         {
             DrawTransitionOverlay(context, clipRect);
+        }
+
+        // 뮤트/비활성 클립 오버레이 (줄무늬 패턴)
+        if (shouldDimClip)
+        {
+            // 대각선 줄무늬 패턴
+            var stripesPen = new Pen(
+                new SolidColorBrush(Color.FromArgb(60, 0, 0, 0)),
+                2);
+
+            for (double stripeX = clipRect.Left; stripeX < clipRect.Right; stripeX += 8)
+            {
+                context.DrawLine(stripesPen,
+                    new Point(stripeX, clipRect.Top),
+                    new Point(stripeX - clipRect.Height, clipRect.Bottom));
+            }
+
+            // 반투명 검정 오버레이
+            context.FillRectangle(
+                new SolidColorBrush(Color.FromArgb(80, 0, 0, 0)),
+                clipRect);
+
+            // 뮤트 아이콘 (중앙)
+            if (width > 60 && height > 30)
+            {
+                double iconX = clipRect.X + clipRect.Width / 2;
+                double iconY = clipRect.Y + clipRect.Height / 2;
+
+                // 스피커 아이콘 with X
+                var muteGeometry = new StreamGeometry();
+                using (var ctx = muteGeometry.Open())
+                {
+                    // 스피커 모양
+                    ctx.BeginFigure(new Point(iconX - 10, iconY - 6), true);
+                    ctx.LineTo(new Point(iconX - 5, iconY - 6));
+                    ctx.LineTo(new Point(iconX, iconY - 10));
+                    ctx.LineTo(new Point(iconX, iconY + 10));
+                    ctx.LineTo(new Point(iconX - 5, iconY + 6));
+                    ctx.LineTo(new Point(iconX - 10, iconY + 6));
+                    ctx.EndFigure(true);
+                }
+
+                context.DrawGeometry(
+                    new SolidColorBrush(Color.FromArgb(200, 255, 80, 80)),
+                    new Pen(Brushes.White, 1.5),
+                    muteGeometry);
+
+                // X 표시
+                var xPen = new Pen(new SolidColorBrush(Color.FromRgb(255, 80, 80)), 2.5);
+                context.DrawLine(xPen,
+                    new Point(iconX + 3, iconY - 8),
+                    new Point(iconX + 12, iconY + 8));
+                context.DrawLine(xPen,
+                    new Point(iconX + 12, iconY - 8),
+                    new Point(iconX + 3, iconY + 8));
+            }
         }
 
         // 키프레임 렌더링 (선택된 클립만)
@@ -1423,6 +1495,32 @@ public class ClipCanvasPanel : Control
     {
         double seconds = ms / 1000.0;
         return $"{seconds:F2}s";
+    }
+
+    /// <summary>
+    /// 색상을 어둡게 만들기
+    /// </summary>
+    private Color DarkenColor(Color color, double factor)
+    {
+        return Color.FromArgb(
+            color.A,
+            (byte)(color.R * factor),
+            (byte)(color.G * factor),
+            (byte)(color.B * factor));
+    }
+
+    /// <summary>
+    /// SMPTE 타임코드 형식으로 변환 (HH:MM:SS:FF)
+    /// </summary>
+    private string FormatSMPTETimecode(long ms, int fps = 30)
+    {
+        long totalFrames = (ms * fps) / 1000;
+        int frames = (int)(totalFrames % fps);
+        int seconds = (int)((totalFrames / fps) % 60);
+        int minutes = (int)((totalFrames / (fps * 60)) % 60);
+        int hours = (int)(totalFrames / (fps * 3600));
+
+        return $"{hours:D2}:{minutes:D2}:{seconds:D2}:{frames:D2}";
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)

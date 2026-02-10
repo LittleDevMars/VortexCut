@@ -90,9 +90,14 @@ public class TimelineHeader : Control
         var zoomPercent = (int)(_pixelsPerMs * 100);
         var zoomText = $"Zoom: {zoomPercent}%";
 
-        // 현재 시간 (프레임 번호)
-        var currentFrame = (int)(_viewModel.CurrentTimeMs * 30 / 1000); // 30fps 가정
-        var frameText = $"Frame: {currentFrame}";
+        // SMPTE 타임코드 (HH:MM:SS:FF)
+        int fps = 30;
+        long totalFrames = (_viewModel.CurrentTimeMs * fps) / 1000;
+        int frames = (int)(totalFrames % fps);
+        int seconds = (int)((totalFrames / fps) % 60);
+        int minutes = (int)((totalFrames / (fps * 60)) % 60);
+        int hours = (int)(totalFrames / (fps * 3600));
+        var timecodeText = $"{hours:D2}:{minutes:D2}:{seconds:D2}:{frames:D2}";
 
         // 클립 개수
         var clipCountText = $"Clips: {_viewModel.Clips.Count}";
@@ -101,7 +106,7 @@ public class TimelineHeader : Control
         var fontSize = 10.0;
 
         // 배경 박스 (프로페셔널 스타일)
-        var infoText = $"{zoomText}  |  {frameText}  |  {clipCountText}";
+        var infoText = $"{zoomText}  |  {timecodeText}  |  {clipCountText}";
         var text = new FormattedText(
             infoText,
             System.Globalization.CultureInfo.CurrentCulture,
