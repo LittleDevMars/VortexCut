@@ -2,8 +2,9 @@
 // C# P/Invoke와 연동되는 C ABI 함수들
 
 pub mod types;
+pub mod timeline;
 
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::os::raw::c_char;
 
 /// 문자열 메모리 해제
