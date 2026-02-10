@@ -324,6 +324,10 @@ public class ClipCanvasPanel : Control
         double height = track.Height - 10;
         var clipRect = new Rect(x, y + 5, Math.Max(width, MinClipWidth), height);
 
+        // 드래그 중인 클립 감지
+        bool isDragging = _isDragging && clip == _draggingClip;
+        bool isTrimming = _isTrimming && clip == _draggingClip;
+
         // 클립 타입 감지 (비디오/오디오)
         bool isAudioClip = track.Type == TrackType.Audio;
 
@@ -333,22 +337,42 @@ public class ClipCanvasPanel : Control
         if (isAudioClip)
         {
             // 오디오 클립: 초록색 그라데이션
-            topColor = isSelected
-                ? Color.Parse("#5CB85C")  // 밝은 초록
-                : Color.Parse("#3A5A3A");  // 다크 초록
-            bottomColor = isSelected
-                ? Color.Parse("#449D44")  // 어두운 초록
-                : Color.Parse("#2A4A2A");  // 더 어두운 초록
+            if (isDragging || isTrimming)
+            {
+                // 드래그/트림 중: 더 밝고 반투명
+                topColor = Color.Parse("#7CD87C");
+                bottomColor = Color.Parse("#5CB85C");
+            }
+            else if (isSelected)
+            {
+                topColor = Color.Parse("#5CB85C");  // 밝은 초록
+                bottomColor = Color.Parse("#449D44");  // 어두운 초록
+            }
+            else
+            {
+                topColor = Color.Parse("#3A5A3A");  // 다크 초록
+                bottomColor = Color.Parse("#2A4A2A");  // 더 어두운 초록
+            }
         }
         else
         {
             // 비디오 클립: 파란색 그라데이션
-            topColor = isSelected
-                ? Color.Parse("#4A90E2")  // 밝은 파란색
-                : Color.Parse("#3A5A7A");  // 다크 블루
-            bottomColor = isSelected
-                ? Color.Parse("#2D6AA6")  // 어두운 파란색
-                : Color.Parse("#2A4A6A");  // 더 어두운 블루
+            if (isDragging || isTrimming)
+            {
+                // 드래그/트림 중: 더 밝고 반투명
+                topColor = Color.Parse("#6AACF2");
+                bottomColor = Color.Parse("#4A90E2");
+            }
+            else if (isSelected)
+            {
+                topColor = Color.Parse("#4A90E2");  // 밝은 파란색
+                bottomColor = Color.Parse("#2D6AA6");  // 어두운 파란색
+            }
+            else
+            {
+                topColor = Color.Parse("#3A5A7A");  // 다크 블루
+                bottomColor = Color.Parse("#2A4A6A");  // 더 어두운 블루
+            }
         }
 
         var gradientBrush = new LinearGradientBrush
@@ -363,14 +387,29 @@ public class ClipCanvasPanel : Control
         };
 
         // 클립 그림자 (DaVinci Resolve 스타일)
+        var shadowOpacity = (isDragging || isTrimming) ? (byte)120 : (byte)80;
+        var shadowOffset = (isDragging || isTrimming) ? 4.0 : 2.0;
         var shadowRect = new Rect(
-            clipRect.X + 2,
-            clipRect.Y + 2,
+            clipRect.X + shadowOffset,
+            clipRect.Y + shadowOffset,
             clipRect.Width,
             clipRect.Height);
         context.FillRectangle(
-            new SolidColorBrush(Color.FromArgb(80, 0, 0, 0)),
+            new SolidColorBrush(Color.FromArgb(shadowOpacity, 0, 0, 0)),
             shadowRect);
+
+        // 드래그 중 배경 추가 강조
+        if (isDragging || isTrimming)
+        {
+            var dragHighlightRect = new Rect(
+                clipRect.X - 2,
+                clipRect.Y - 2,
+                clipRect.Width + 4,
+                clipRect.Height + 4);
+            context.FillRectangle(
+                new SolidColorBrush(Color.FromArgb(60, 80, 220, 255)),
+                dragHighlightRect);
+        }
 
         context.FillRectangle(gradientBrush, clipRect);
 
