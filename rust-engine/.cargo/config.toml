@@ -1,0 +1,2 @@
+[build]
+rustflags = ["-L", "C:/vcpkg/installed/x64-windows/lib"]
