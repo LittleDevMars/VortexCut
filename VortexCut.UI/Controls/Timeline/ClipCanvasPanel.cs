@@ -3,6 +3,8 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
+using System.Linq;
 using VortexCut.Core.Models;
 using VortexCut.UI.ViewModels;
 
@@ -26,6 +28,8 @@ public class ClipCanvasPanel : Control
     private ClipModel? _draggingClip;
     private Point _dragStartPoint;
     private bool _isDragging;
+    private bool _isPanning;
+    private Point _panStartPoint;
 
     public ClipCanvasPanel()
     {
@@ -177,28 +181,70 @@ public class ClipCanvasPanel : Control
         base.OnPointerPressed(e);
 
         var point = e.GetPosition(this);
+        var properties = e.GetCurrentPoint(this).Properties;
 
-        // 클립 선택
-        _selectedClip = GetClipAtPosition(point);
-
-        if (_selectedClip != null)
+        // 중간 버튼: Pan 시작
+        if (properties.IsMiddleButtonPressed)
         {
-            _isDragging = true;
-            _draggingClip = _selectedClip;
-            _dragStartPoint = point;
+            _isPanning = true;
+            _panStartPoint = point;
+            Cursor = new Cursor(StandardCursorType.SizeAll);
+            e.Handled = true;
+            return;
         }
 
-        InvalidateVisual();
-        e.Handled = true;
+        // 왼쪽 버튼: 클립 선택/드래그
+        if (properties.IsLeftButtonPressed)
+        {
+            _selectedClip = GetClipAtPosition(point);
+
+            if (_selectedClip != null)
+            {
+                _isDragging = true;
+                _draggingClip = _selectedClip;
+                _dragStartPoint = point;
+            }
+
+            InvalidateVisual();
+            e.Handled = true;
+        }
     }
 
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
 
+        var point = e.GetPosition(this);
+
+        // Pan 처리 (중간 버튼)
+        if (_isPanning)
+        {
+            var delta = point - _panStartPoint;
+
+            // ScrollViewer를 통해 스크롤
+            var timelineCanvas = this.GetVisualAncestors().OfType<TimelineCanvas>().FirstOrDefault();
+            if (timelineCanvas != null)
+            {
+                // ScrollViewer는 TimelineCanvas에 있으므로, 부모를 통해 접근
+                // 간단한 방법: ScrollViewer를 찾아서 Offset 변경
+                var scrollViewer = this.GetVisualAncestors().OfType<ScrollViewer>().FirstOrDefault();
+                if (scrollViewer != null)
+                {
+                    scrollViewer.Offset = new Vector(
+                        Math.Max(0, scrollViewer.Offset.X - delta.X),
+                        Math.Max(0, scrollViewer.Offset.Y - delta.Y)
+                    );
+                }
+            }
+
+            _panStartPoint = point;
+            e.Handled = true;
+            return;
+        }
+
+        // 클립 드래그 처리
         if (_isDragging && _draggingClip != null)
         {
-            var point = e.GetPosition(this);
             var deltaX = point.X - _dragStartPoint.X;
 
             // 드래그로 클립 이동
@@ -214,9 +260,80 @@ public class ClipCanvasPanel : Control
     {
         base.OnPointerReleased(e);
 
+        // Pan 종료
+        if (_isPanning)
+        {
+            _isPanning = false;
+            Cursor = Cursor.Default;
+            e.Handled = true;
+            return;
+        }
+
+        // 클립 드래그 종료
         _isDragging = false;
         _draggingClip = null;
         e.Handled = true;
+    }
+
+    /// <summary>
+    /// Zoom/Pan 마우스 휠 처리
+    /// </summary>
+    protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
+    {
+        base.OnPointerWheelChanged(e);
+
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            // Ctrl + 마우스휠: 수평 Zoom (0.01 ~ 1.0)
+            var zoomFactor = e.Delta.Y > 0 ? 1.1 : 0.9;
+            var newZoom = Math.Clamp(_pixelsPerMs * zoomFactor, 0.01, 1.0);
+
+            // TimelineCanvas를 통해 전체 컴포넌트에 Zoom 적용
+            var timelineCanvas = this.GetVisualAncestors().OfType<TimelineCanvas>().FirstOrDefault();
+            if (timelineCanvas != null)
+            {
+                timelineCanvas.SetZoom(newZoom);
+            }
+
+            e.Handled = true;
+        }
+        else if (e.KeyModifiers.HasFlag(KeyModifiers.Alt))
+        {
+            // Alt + 마우스휠: 수직 Zoom (트랙 높이 30~200px)
+            var heightDelta = e.Delta.Y > 0 ? 10 : -10;
+
+            // 마우스 위치의 트랙 찾기
+            var mousePos = e.GetPosition(this);
+            var trackIndex = GetTrackIndexAtY(mousePos.Y);
+            var track = GetTrackByIndex(trackIndex);
+
+            if (track != null)
+            {
+                track.Height = Math.Clamp(track.Height + heightDelta, 30, 200);
+                InvalidateVisual();
+
+                // TrackListPanel도 업데이트
+                var timelineCanvas = this.GetVisualAncestors().OfType<TimelineCanvas>().FirstOrDefault();
+                if (timelineCanvas != null && _viewModel != null)
+                {
+                    // ViewModel 변경 감지로 자동 업데이트
+                }
+            }
+
+            e.Handled = true;
+        }
+        else if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        {
+            // Shift + 마우스휠: 수평 스크롤
+            // ScrollViewer가 자동으로 처리하므로 기본 동작 유지
+            // e.Handled = false;
+        }
+        else
+        {
+            // 마우스휠 기본: 수직 스크롤
+            // ScrollViewer가 자동으로 처리하므로 기본 동작 유지
+            // e.Handled = false;
+        }
     }
 
     private ClipModel? GetClipAtPosition(Point point)

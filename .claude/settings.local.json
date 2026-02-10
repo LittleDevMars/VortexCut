@@ -8,7 +8,28 @@
       "Bash(git init:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(cargo test:*)"
+      "Bash(cargo test:*)",
+      "Bash(git push:*)",
+      "Bash(./vcpkg install:*)",
+      "Bash(set:*)",
+      "Bash(export VCPKG_ROOT='C:/vcpkg')",
+      "Bash(export VCPKG_DEFAULT_TRIPLET='x64-windows')",
+      "Bash(export:*)",
+      "Bash(export FFMPEG_INCLUDE_DIR:*)",
+      "Bash(winget:*)",
+      "Bash($env:VCPKG_ROOT=\"C:/vcpkg\")",
+      "Bash(C:/vcpkg/vcpkg.exe integrate:*)",
+      "Bash(VCPKG_ROOT=C:/vcpkg cargo build:*)",
+      "Bash(PKG_CONFIG_PATH=C:/vcpkg/installed/x64-windows/lib/pkgconfig FFMPEG_PKG_CONFIG_PATH=C:/vcpkg/installed/x64-windows/lib/pkgconfig cargo build:*)",
+      "Bash(FFMPEG_LIBS_DIR=C:/vcpkg/installed/x64-windows/lib FFMPEG_INCLUDE_DIR=C:/vcpkg/installed/x64-windows/include FFMPEG_DLL_PATH=C:/vcpkg/installed/x64-windows/bin cargo build:*)",
+      "Bash(cargo clean:*)",
+      "Bash(FFMPEG_LIBS_DIR=C:/vcpkg/installed/x64-windows/lib FFMPEG_INCLUDE_DIR=C:/vcpkg/installed/x64-windows/include FFMPEG_DLL_PATH=C:/vcpkg/installed/x64-windows/bin PKG_CONFIG_PATH=C:/vcpkg/installed/x64-windows/lib/pkgconfig cargo build:*)",
+      "Bash(FFMPEG_DIR=C:/vcpkg/installed/x64-windows PKG_CONFIG_PATH=C:/vcpkg/installed/x64-windows/lib/pkgconfig cargo build:*)",
+      "Bash(FFMPEG_DIR=C:/vcpkg/installed/x64-windows PKG_CONFIG_PATH=C:/vcpkg/installed/x64-windows/lib/pkgconfig BINDGEN_EXTRA_CLANG_ARGS=\"-IC:/vcpkg/installed/x64-windows/include\" cargo build:*)",
+      "Bash(FFMPEG_DIR=C:/vcpkg/installed/x64-windows PKG_CONFIG_PATH=C:/vcpkg/installed/x64-windows/lib/pkgconfig cargo test:*)",
+      "Bash(dotnet run:*)",
+      "Bash(timeout:*)",
+      "Bash(VortexCut.UI/Views/MainWindow.axaml.cs << 'MAINWINDOW_EOF'\nusing Avalonia.Controls;\nusing VortexCut.UI.ViewModels;\n\nnamespace VortexCut.UI.Views;\n\npublic partial class MainWindow : Window\n{\n    private MainViewModel? _viewModel;\n\n    public MainWindow\\(\\)\n    {\n        InitializeComponent\\(\\);\n        _viewModel = new MainViewModel\\(\\);\n        DataContext = _viewModel;\n\n        // StorageProvider 설정 및 초기화\n        Opened += \\(sender, e\\) =>\n        {\n            _viewModel.SetStorageProvider\\(StorageProvider\\);\n            _viewModel.Initialize\\(\\); // 첫 프로젝트 생성\n            InitializeTimeline\\(\\);\n        };\n    }\n\n    private void InitializeTimeline\\(\\)\n    {\n        if \\(_viewModel == null\\) return;\n\n        // Timeline Canvas 업데이트\n        _viewModel.Timeline.Clips.CollectionChanged += \\(s, e\\) =>\n        {\n            UpdateTimelineCanvas\\(\\);\n        };\n\n        UpdateTimelineCanvas\\(\\);\n    }\n\n    private void UpdateTimelineCanvas\\(\\)\n    {\n        if \\(_viewModel == null\\) return;\n\n        // TimelineCanvas에 클립 데이터 전달\n        var canvas = this.FindControl<Controls.TimelineCanvas>\\(\"TimelineCanvas\"\\);\n        if \\(canvas != null\\)\n        {\n            canvas.SetClips\\(_viewModel.Timeline.Clips\\);\n        }\n    }\n}\nMAINWINDOW_EOF)"
     ]
   }
 }
