@@ -50,6 +50,11 @@ public class ClipCanvasPanel : Control
     private ClipModel? _draggingKeyframeClip;
     private bool _isDraggingKeyframe;
 
+    // 성능 모니터링 (FPS)
+    private DateTime _lastFrameTime = DateTime.Now;
+    private List<double> _frameTimes = new List<double>();
+    private double _currentFps = 0;
+
     public ClipCanvasPanel()
     {
         ClipToBounds = true;
@@ -95,6 +100,23 @@ public class ClipCanvasPanel : Control
     {
         base.Render(context);
 
+        // FPS 계산
+        var now = DateTime.Now;
+        var deltaTime = (now - _lastFrameTime).TotalMilliseconds;
+        _lastFrameTime = now;
+
+        if (deltaTime > 0)
+        {
+            _frameTimes.Add(deltaTime);
+            if (_frameTimes.Count > 30) // 최근 30프레임 평균
+            {
+                _frameTimes.RemoveAt(0);
+            }
+
+            var avgDelta = _frameTimes.Average();
+            _currentFps = 1000.0 / avgDelta;
+        }
+
         // 배경
         context.FillRectangle(new SolidColorBrush(Color.Parse("#1E1E1E")), Bounds);
 
@@ -121,6 +143,9 @@ public class ClipCanvasPanel : Control
         {
             DrawClipTooltip(context, _hoveredClip);
         }
+
+        // 성능 정보 (FPS, 클립 개수 - 우측 하단)
+        DrawPerformanceInfo(context);
     }
 
     private void DrawTrackBackgrounds(DrawingContext context)
@@ -163,8 +188,67 @@ public class ClipCanvasPanel : Control
             context.DrawRectangle(borderPen, trackRect);
         }
 
-        // 오디오 트랙
+        // 비디오/오디오 트랙 경계 구분선 (프로페셔널 스타일)
         double audioStartY = _videoTracks.Sum(t => t.Height);
+        if (_videoTracks.Count > 0 && _audioTracks.Count > 0)
+        {
+            // 두꺼운 구분선 그림자
+            var separatorShadowPen = new Pen(
+                new SolidColorBrush(Color.FromArgb(140, 0, 0, 0)),
+                4);
+            context.DrawLine(separatorShadowPen,
+                new Point(0, audioStartY + 2),
+                new Point(Bounds.Width, audioStartY + 2));
+
+            // 두꺼운 구분선 본체 (시안색)
+            var separatorPen = new Pen(
+                new SolidColorBrush(Color.FromArgb(180, 80, 220, 255)),
+                3);
+            context.DrawLine(separatorPen,
+                new Point(0, audioStartY),
+                new Point(Bounds.Width, audioStartY));
+
+            // 구분선 상단 하이라이트 (3D 효과)
+            var highlightPen = new Pen(
+                new SolidColorBrush(Color.FromArgb(100, 255, 255, 255)),
+                1);
+            context.DrawLine(highlightPen,
+                new Point(0, audioStartY - 1),
+                new Point(Bounds.Width, audioStartY - 1));
+
+            // 라벨 (좌측)
+            var labelTypeface = new Typeface("Segoe UI", FontStyle.Normal, FontWeight.Bold);
+            var videoLabel = new FormattedText(
+                "VIDEO",
+                System.Globalization.CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                labelTypeface,
+                10,
+                new SolidColorBrush(Color.FromArgb(200, 100, 180, 255)));
+
+            var audioLabel = new FormattedText(
+                "AUDIO",
+                System.Globalization.CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                labelTypeface,
+                10,
+                new SolidColorBrush(Color.FromArgb(200, 100, 230, 150)));
+
+            // 라벨 배경
+            var videoLabelBg = new Rect(5, audioStartY - 15, videoLabel.Width + 8, 12);
+            context.FillRectangle(
+                new SolidColorBrush(Color.FromArgb(200, 30, 30, 32)),
+                videoLabelBg);
+            context.DrawText(videoLabel, new Point(9, audioStartY - 14));
+
+            var audioLabelBg = new Rect(5, audioStartY + 3, audioLabel.Width + 8, 12);
+            context.FillRectangle(
+                new SolidColorBrush(Color.FromArgb(200, 30, 30, 32)),
+                audioLabelBg);
+            context.DrawText(audioLabel, new Point(9, audioStartY + 4));
+        }
+
+        // 오디오 트랙
         for (int i = 0; i < _audioTracks.Count; i++)
         {
             var track = _audioTracks[i];
@@ -915,6 +999,86 @@ public class ClipCanvasPanel : Control
             new SolidColorBrush(Color.FromArgb(250, 40, 40, 42)),
             new Pen(new SolidColorBrush(Color.FromArgb(200, 80, 220, 255)), 1.5),
             arrowGeometry);
+    }
+
+    /// <summary>
+    /// 성능 정보 표시 (FPS, 클립 개수 - 우측 하단)
+    /// </summary>
+    private void DrawPerformanceInfo(DrawingContext context)
+    {
+        var typeface = new Typeface("Consolas", FontStyle.Normal, FontWeight.Normal);
+        const double fontSize = 10;
+
+        var infoLines = new[]
+        {
+            $"FPS: {_currentFps:F1}",
+            $"Clips: {_clips.Count}",
+            $"Tracks: {_videoTracks.Count + _audioTracks.Count}"
+        };
+
+        const double lineHeight = 14;
+        const double padding = 6;
+
+        // 텍스트 크기 계산
+        double maxTextWidth = 0;
+        foreach (var line in infoLines)
+        {
+            var text = new FormattedText(
+                line,
+                System.Globalization.CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                typeface,
+                fontSize,
+                Brushes.White);
+            maxTextWidth = Math.Max(maxTextWidth, text.Width);
+        }
+
+        // 우측 하단 위치
+        double infoX = Bounds.Width - maxTextWidth - padding * 2 - 10;
+        double infoY = Bounds.Height - (infoLines.Length * lineHeight) - padding * 2 - 10;
+
+        double infoWidth = maxTextWidth + padding * 2;
+        double infoHeight = infoLines.Length * lineHeight + padding * 2;
+
+        // 배경 (반투명 그라디언트)
+        var bgRect = new Rect(infoX, infoY, infoWidth, infoHeight);
+        var bgGradient = new LinearGradientBrush
+        {
+            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+            EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+            GradientStops = new GradientStops
+            {
+                new GradientStop(Color.FromArgb(200, 30, 30, 32), 0),
+                new GradientStop(Color.FromArgb(220, 25, 25, 27), 1)
+            }
+        };
+        context.FillRectangle(bgGradient, bgRect);
+
+        // 테두리 (FPS에 따라 색상 변경)
+        var borderColor = _currentFps >= 55
+            ? Color.FromArgb(150, 100, 255, 100)  // 초록 (높은 FPS)
+            : _currentFps >= 30
+                ? Color.FromArgb(150, 255, 220, 80)  // 노랑 (보통 FPS)
+                : Color.FromArgb(150, 255, 100, 100); // 빨강 (낮은 FPS)
+
+        var borderPen = new Pen(new SolidColorBrush(borderColor), 1.5);
+        context.DrawRectangle(borderPen, bgRect);
+
+        // 텍스트 렌더링
+        double textY = infoY + padding;
+        foreach (var line in infoLines)
+        {
+            var text = new FormattedText(
+                line,
+                System.Globalization.CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                typeface,
+                fontSize,
+                Brushes.LightGreen);
+
+            context.DrawText(text, new Point(infoX + padding, textY));
+            textY += lineHeight;
+        }
     }
 
     private void DrawSnapGuideline(DrawingContext context, long timeMs)
