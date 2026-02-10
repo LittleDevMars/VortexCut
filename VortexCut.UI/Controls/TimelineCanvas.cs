@@ -24,10 +24,20 @@ public class TimelineCanvas : Control
     private Point _dragStartPoint;
     private bool _isDragging;
 
+    /// <summary>
+    /// ViewModel 참조 (드롭 시 클립 추가용)
+    /// </summary>
+    public ViewModels.TimelineViewModel? ViewModel { get; set; }
+
     public TimelineCanvas()
     {
         ClipToBounds = true;
         Focusable = true;
+        DragDrop.SetAllowDrop(this, true);
+
+        // DragDrop 이벤트 등록
+        AddHandler(DragDrop.DragOverEvent, HandleDragOver);
+        AddHandler(DragDrop.DropEvent, HandleDrop);
     }
 
     /// <summary>
@@ -274,5 +284,43 @@ public class TimelineCanvas : Control
         }
 
         return null;
+    }
+
+    private void HandleDragOver(object? sender, DragEventArgs e)
+    {
+        if (e.Data.Contains("MediaItem"))
+        {
+            e.DragEffects = DragDropEffects.Copy;
+            e.Handled = true;
+        }
+        else
+        {
+            e.DragEffects = DragDropEffects.None;
+        }
+    }
+
+    private void HandleDrop(object? sender, DragEventArgs e)
+    {
+        if (e.Data.Contains("MediaItem"))
+        {
+            var mediaItem = e.Data.Get("MediaItem") as MediaItem;
+            if (mediaItem != null && ViewModel != null)
+            {
+                var dropPoint = e.GetPosition(this);
+
+                // 드롭 위치를 타임라인 시간과 트랙으로 변환
+                long startTimeMs = XToTime(dropPoint.X);
+                int trackIndex = (int)((dropPoint.Y - TimelineHeight) / TrackHeight);
+                trackIndex = Math.Clamp(trackIndex, 0, 4); // 0-4 트랙
+
+                // ViewModel을 통해 클립 추가
+                Dispatcher.UIThread.Post(() =>
+                {
+                    ViewModel.AddClipFromMediaItem(mediaItem, startTimeMs, trackIndex);
+                });
+            }
+
+            e.Handled = true;
+        }
     }
 }

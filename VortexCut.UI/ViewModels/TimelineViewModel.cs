@@ -12,9 +12,16 @@ namespace VortexCut.UI.ViewModels;
 public partial class TimelineViewModel : ViewModelBase
 {
     private readonly ProjectService _projectService;
+    private ulong _nextTrackId = 1;
 
     [ObservableProperty]
     private ObservableCollection<ClipModel> _clips = new();
+
+    [ObservableProperty]
+    private ObservableCollection<TrackModel> _videoTracks = new();
+
+    [ObservableProperty]
+    private ObservableCollection<TrackModel> _audioTracks = new();
 
     [ObservableProperty]
     private long _currentTimeMs = 0;
@@ -25,9 +32,35 @@ public partial class TimelineViewModel : ViewModelBase
     [ObservableProperty]
     private ClipModel? _selectedClip;
 
+    // Snap 설정
+    [ObservableProperty]
+    private bool _snapEnabled = true;
+
+    [ObservableProperty]
+    private long _snapThresholdMs = 100;
+
     public TimelineViewModel(ProjectService projectService)
     {
         _projectService = projectService;
+        InitializeDefaultTracks();
+    }
+
+    /// <summary>
+    /// 기본 트랙 초기화 (8개 비디오 + 4개 오디오)
+    /// </summary>
+    private void InitializeDefaultTracks()
+    {
+        // 8개 비디오 트랙
+        for (int i = 0; i < 8; i++)
+        {
+            AddVideoTrack();
+        }
+
+        // 4개 오디오 트랙
+        for (int i = 0; i < 4; i++)
+        {
+            AddAudioTrack();
+        }
     }
 
     /// <summary>
@@ -47,6 +80,15 @@ public partial class TimelineViewModel : ViewModelBase
                 Clips.Add(clip);
             });
         });
+    }
+
+    /// <summary>
+    /// MediaItem으로부터 클립 추가 (드래그앤드롭용)
+    /// </summary>
+    public void AddClipFromMediaItem(MediaItem mediaItem, long startTimeMs, int trackIndex)
+    {
+        var clip = _projectService.AddVideoClip(mediaItem.FilePath, startTimeMs, mediaItem.DurationMs, trackIndex);
+        Clips.Add(clip);
     }
 
     /// <summary>
@@ -72,6 +114,66 @@ public partial class TimelineViewModel : ViewModelBase
         {
             Clips.Remove(SelectedClip);
             SelectedClip = null;
+        }
+    }
+
+    /// <summary>
+    /// 비디오 트랙 추가
+    /// </summary>
+    [RelayCommand]
+    public void AddVideoTrack()
+    {
+        // TODO: ProjectService.AddVideoTrack() 연동
+        var track = new TrackModel
+        {
+            Id = _nextTrackId++,
+            Index = VideoTracks.Count,
+            Type = TrackType.Video,
+            Name = $"V{VideoTracks.Count + 1}",
+            ColorArgb = 0xFF0000FF // Blue
+        };
+        VideoTracks.Add(track);
+    }
+
+    /// <summary>
+    /// 오디오 트랙 추가
+    /// </summary>
+    [RelayCommand]
+    public void AddAudioTrack()
+    {
+        // TODO: ProjectService.AddAudioTrack() 연동
+        var track = new TrackModel
+        {
+            Id = _nextTrackId++,
+            Index = AudioTracks.Count,
+            Type = TrackType.Audio,
+            Name = $"A{AudioTracks.Count + 1}",
+            ColorArgb = 0xFF00FF00 // Green
+        };
+        AudioTracks.Add(track);
+    }
+
+    /// <summary>
+    /// 트랙 제거
+    /// </summary>
+    public void RemoveTrack(TrackModel track)
+    {
+        if (track.Type == TrackType.Video)
+        {
+            VideoTracks.Remove(track);
+            // 인덱스 재정렬
+            for (int i = 0; i < VideoTracks.Count; i++)
+            {
+                VideoTracks[i].Index = i;
+            }
+        }
+        else
+        {
+            AudioTracks.Remove(track);
+            for (int i = 0; i < AudioTracks.Count; i++)
+            {
+                AudioTracks[i].Index = i;
+            }
         }
     }
 }

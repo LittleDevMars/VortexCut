@@ -17,7 +17,8 @@
         </Border>
 
         <!-- Media List -->
-        <ListBox ItemsSource="{Binding MediaItems}"
+        <ListBox x:Name="MediaListBox"
+                 ItemsSource="{Binding MediaItems}"
                  SelectedItem="{Binding SelectedItem}"
                  Background="#1E1E1E">
             <ListBox.ItemTemplate>

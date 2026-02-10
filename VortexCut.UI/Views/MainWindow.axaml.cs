@@ -26,6 +26,13 @@ public partial class MainWindow : Window
     {
         if (_viewModel == null) return;
 
+        // TimelineCanvas에 ViewModel 설정
+        var canvas = this.FindControl<Controls.TimelineCanvas>("TimelineCanvas");
+        if (canvas != null)
+        {
+            canvas.ViewModel = _viewModel.Timeline;
+        }
+
         // Timeline Canvas 업데이트
         _viewModel.Timeline.Clips.CollectionChanged += (s, e) =>
         {
