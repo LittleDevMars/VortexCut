@@ -164,17 +164,32 @@ public class ClipCanvasPanel : Control
         double height = track.Height - 10;
         var clipRect = new Rect(x, y + 5, Math.Max(width, MinClipWidth), height);
 
-        // 클립 배경
-        var clipBrush = isSelected
-            ? new SolidColorBrush(Color.Parse("#007ACC"))
-            : new SolidColorBrush(Color.Parse("#3E3E42"));
+        // 클립 배경 (그라데이션)
+        var topColor = isSelected
+            ? Color.Parse("#4A90E2")  // 밝은 파란색
+            : Color.Parse("#3A3A3C");  // 다크 그레이
 
-        context.FillRectangle(clipBrush, clipRect);
+        var bottomColor = isSelected
+            ? Color.Parse("#2D6AA6")  // 어두운 파란색
+            : Color.Parse("#2A2A2C");  // 더 어두운 그레이
 
-        // 테두리
+        var gradientBrush = new LinearGradientBrush
+        {
+            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+            EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+            GradientStops = new GradientStops
+            {
+                new GradientStop(topColor, 0),
+                new GradientStop(bottomColor, 1)
+            }
+        };
+
+        context.FillRectangle(gradientBrush, clipRect);
+
+        // 테두리 (선택된 클립은 하얀색, 일반은 회색)
         var borderPen = isSelected
             ? new Pen(Brushes.White, 2)
-            : new Pen(new SolidColorBrush(Color.Parse("#555555")), 1);
+            : new Pen(new SolidColorBrush(Color.Parse("#4A4A4C")), 1);
 
         context.DrawRectangle(borderPen, clipRect);
 
