@@ -1,0 +1,46 @@
+# Rust
+rust-engine/target/
+rust-engine/Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.userprefs
+
+# Build outputs
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Bb]uild/
+[Oo]ut/
+
+# Native libraries
+*.dll
+*.dylib
+*.so
+!runtimes/**/*.dll
+!runtimes/**/*.dylib
+!runtimes/**/*.so
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+*.log

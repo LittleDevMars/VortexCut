@@ -1,0 +1,24 @@
+[package]
+name = "rust_engine"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "rust_engine"
+crate-type = ["cdylib"]  # Dynamic library for FFI
+
+[dependencies]
+# FFmpeg 의존성은 나중에 추가
+# rusty_ffmpeg = "0.13"
+libc = "0.2"
+log = "0.4"
+env_logger = "0.11"
+
+[build-dependencies]
+# C 헤더 생성은 선택사항
+# cbindgen = "0.26"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
