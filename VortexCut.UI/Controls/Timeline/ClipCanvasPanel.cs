@@ -7,8 +7,14 @@ using Avalonia.VisualTree;
 using System.Linq;
 using VortexCut.Core.Models;
 using VortexCut.UI.ViewModels;
+using VortexCut.UI.Services;
 
 namespace VortexCut.UI.Controls.Timeline;
+
+/// <summary>
+/// 클립 엣지 (트림용)
+/// </summary>
+public enum ClipEdge { None, Left, Right }
 
 /// <summary>
 /// 클립 렌더링 영역 (드래그, 선택, Snap 처리)
@@ -19,6 +25,7 @@ public class ClipCanvasPanel : Control
     private const double MinClipWidth = 20;
 
     private TimelineViewModel? _viewModel;
+    private SnapService? _snapService;
     private List<ClipModel> _clips = new();
     private List<TrackModel> _videoTracks = new();
     private List<TrackModel> _audioTracks = new();
@@ -30,6 +37,11 @@ public class ClipCanvasPanel : Control
     private bool _isDragging;
     private bool _isPanning;
     private Point _panStartPoint;
+    private long _lastSnappedTimeMs = -1;
+    private bool _isTrimming;
+    private ClipEdge _trimEdge = ClipEdge.None;
+    private long _originalStartTimeMs;
+    private long _originalDurationMs;
 
     public ClipCanvasPanel()
     {
@@ -44,6 +56,7 @@ public class ClipCanvasPanel : Control
     public void SetViewModel(TimelineViewModel viewModel)
     {
         _viewModel = viewModel;
+        _snapService = new SnapService(viewModel);
     }
 
     public void SetClips(IEnumerable<ClipModel> clips)
@@ -80,6 +93,12 @@ public class ClipCanvasPanel : Control
 
         // 트랙 배경
         DrawTrackBackgrounds(context);
+
+        // Snap 가이드라인 (드래그 중일 때)
+        if (_isDragging && _lastSnappedTimeMs >= 0)
+        {
+            DrawSnapGuideline(context, _lastSnappedTimeMs);
+        }
 
         // 클립들
         DrawClips(context);
@@ -176,6 +195,18 @@ public class ClipCanvasPanel : Control
             new Point(x, Bounds.Height));
     }
 
+    private void DrawSnapGuideline(DrawingContext context, long timeMs)
+    {
+        double x = TimeToX(timeMs);
+        var pen = new Pen(Brushes.Yellow, 1)
+        {
+            DashStyle = DashStyle.Dash
+        };
+        context.DrawLine(pen,
+            new Point(x, 0),
+            new Point(x, Bounds.Height));
+    }
+
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
@@ -193,16 +224,33 @@ public class ClipCanvasPanel : Control
             return;
         }
 
-        // 왼쪽 버튼: 클립 선택/드래그
+        // 왼쪽 버튼: 클립 선택/드래그/트림
         if (properties.IsLeftButtonPressed)
         {
             _selectedClip = GetClipAtPosition(point);
 
             if (_selectedClip != null)
             {
-                _isDragging = true;
-                _draggingClip = _selectedClip;
-                _dragStartPoint = point;
+                // 트림 엣지 감지
+                _trimEdge = HitTestEdge(_selectedClip, point);
+
+                if (_trimEdge != ClipEdge.None)
+                {
+                    // 트림 모드
+                    _isTrimming = true;
+                    _draggingClip = _selectedClip;
+                    _dragStartPoint = point;
+                    _originalStartTimeMs = _selectedClip.StartTimeMs;
+                    _originalDurationMs = _selectedClip.DurationMs;
+                    Cursor = new Cursor(StandardCursorType.SizeWestEast);
+                }
+                else
+                {
+                    // 드래그 모드
+                    _isDragging = true;
+                    _draggingClip = _selectedClip;
+                    _dragStartPoint = point;
+                }
             }
 
             InvalidateVisual();
@@ -242,6 +290,38 @@ public class ClipCanvasPanel : Control
             return;
         }
 
+        // 트림 처리
+        if (_isTrimming && _draggingClip != null)
+        {
+            var currentTime = XToTime(point.X);
+
+            if (_trimEdge == ClipEdge.Left)
+            {
+                // 왼쪽 트림: StartTimeMs 증가, DurationMs 감소
+                var newStartTime = Math.Max(0, currentTime);
+                var maxStartTime = _originalStartTimeMs + _originalDurationMs - 100; // 최소 100ms 유지
+
+                newStartTime = Math.Min(newStartTime, maxStartTime);
+
+                var deltaTime = newStartTime - _originalStartTimeMs;
+                _draggingClip.StartTimeMs = newStartTime;
+                _draggingClip.DurationMs = _originalDurationMs - deltaTime;
+
+                // TrimStartMs도 조정 (Rust에서 처리할 예정)
+                // _draggingClip.TrimStartMs += deltaTime;
+            }
+            else if (_trimEdge == ClipEdge.Right)
+            {
+                // 오른쪽 트림: DurationMs만 조정
+                var newEndTime = Math.Max(_draggingClip.StartTimeMs + 100, currentTime); // 최소 100ms 유지
+                _draggingClip.DurationMs = newEndTime - _draggingClip.StartTimeMs;
+            }
+
+            InvalidateVisual();
+            e.Handled = true;
+            return;
+        }
+
         // 클립 드래그 처리
         if (_isDragging && _draggingClip != null)
         {
@@ -249,7 +329,20 @@ public class ClipCanvasPanel : Control
 
             // 드래그로 클립 이동
             var deltaTimeMs = (long)(deltaX / _pixelsPerMs);
-            _draggingClip.StartTimeMs = Math.Max(0, _draggingClip.StartTimeMs + deltaTimeMs);
+            var newStartTime = Math.Max(0, _draggingClip.StartTimeMs + deltaTimeMs);
+
+            // Snap 적용
+            if (_snapService != null && _viewModel != null && _viewModel.SnapEnabled)
+            {
+                var snapResult = _snapService.GetSnapTarget(newStartTime, _draggingClip);
+                _draggingClip.StartTimeMs = snapResult.TimeMs;
+                _lastSnappedTimeMs = snapResult.Snapped ? snapResult.TimeMs : -1;
+            }
+            else
+            {
+                _draggingClip.StartTimeMs = newStartTime;
+                _lastSnappedTimeMs = -1;
+            }
 
             _dragStartPoint = point;
             InvalidateVisual();
@@ -269,9 +362,22 @@ public class ClipCanvasPanel : Control
             return;
         }
 
+        // 트림 종료
+        if (_isTrimming)
+        {
+            _isTrimming = false;
+            _trimEdge = ClipEdge.None;
+            _draggingClip = null;
+            Cursor = Cursor.Default;
+            e.Handled = true;
+            return;
+        }
+
         // 클립 드래그 종료
         _isDragging = false;
         _draggingClip = null;
+        _lastSnappedTimeMs = -1;
+        InvalidateVisual(); // Snap 가이드라인 제거
         e.Handled = true;
     }
 
@@ -356,6 +462,36 @@ public class ClipCanvasPanel : Control
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// 클립 엣지 HitTest (트림 핸들)
+    /// </summary>
+    private ClipEdge HitTestEdge(ClipModel clip, Point point)
+    {
+        double x = TimeToX(clip.StartTimeMs);
+        double width = DurationToWidth(clip.DurationMs);
+        double y = GetTrackYPosition(clip.TrackIndex);
+        var track = GetTrackByIndex(clip.TrackIndex);
+        if (track == null) return ClipEdge.None;
+
+        double height = track.Height - 10;
+        var clipRect = new Rect(x, y + 5, Math.Max(width, MinClipWidth), height);
+
+        if (!clipRect.Contains(point))
+            return ClipEdge.None;
+
+        const double EdgeThreshold = 10; // 10px 트림 핸들 영역
+
+        // 왼쪽 엣지
+        if (point.X < clipRect.Left + EdgeThreshold)
+            return ClipEdge.Left;
+
+        // 오른쪽 엣지
+        if (point.X > clipRect.Right - EdgeThreshold)
+            return ClipEdge.Right;
+
+        return ClipEdge.None;
     }
 
     private void HandleDragOver(object? sender, DragEventArgs e)
