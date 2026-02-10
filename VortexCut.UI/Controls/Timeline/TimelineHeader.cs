@@ -59,10 +59,30 @@ public class TimelineHeader : Control
 
     private void DrawTimeRuler(DrawingContext context)
     {
-        var textBrush = new SolidColorBrush(Colors.White);
-        var typeface = new Typeface("Segoe UI");
+        var typeface = new Typeface("Segoe UI", FontStyle.Normal, FontWeight.SemiBold);
         var fontSize = 10;
 
+        // 작은 눈금 (100ms 간격)
+        var smallTickPen = new Pen(new SolidColorBrush(Color.Parse("#555555")), 1);
+        for (int i = 0; i < 1000; i++)
+        {
+            long timeMs = i * 100; // 100ms 간격
+            double x = TimeToX(timeMs);
+
+            if (x < 0 || x > Bounds.Width)
+                continue;
+
+            // 작은 눈금 (5px)
+            if (i % 10 != 0) // 1초 단위는 큰 눈금으로
+            {
+                context.DrawLine(smallTickPen,
+                    new Point(x, HeaderHeight - 5),
+                    new Point(x, HeaderHeight));
+            }
+        }
+
+        // 큰 눈금 및 텍스트 (1초 간격)
+        var bigTickPen = new Pen(new SolidColorBrush(Color.Parse("#AAAAAA")), 1.5);
         for (int i = 0; i < 100; i++)
         {
             long timeMs = i * 1000; // 1초 간격
@@ -71,21 +91,27 @@ public class TimelineHeader : Control
             if (x < 0 || x > Bounds.Width)
                 continue;
 
-            // 큰 눈금
-            context.DrawLine(new Pen(Brushes.Gray, 1),
-                new Point(x, HeaderHeight - 10),
+            // 큰 눈금 (12px)
+            context.DrawLine(bigTickPen,
+                new Point(x, HeaderHeight - 12),
                 new Point(x, HeaderHeight));
 
-            // 시간 텍스트
+            // 시간 텍스트 (SemiBold, 배경 추가)
             var text = new FormattedText(
                 $"{i}s",
                 System.Globalization.CultureInfo.CurrentCulture,
                 FlowDirection.LeftToRight,
                 typeface,
                 fontSize,
-                textBrush);
+                Brushes.White);
 
-            context.DrawText(text, new Point(x + 2, HeaderHeight - 25));
+            // 텍스트 배경 (반투명)
+            var textBgRect = new Rect(x + 1, HeaderHeight - 26, text.Width + 4, text.Height + 2);
+            context.FillRectangle(
+                new SolidColorBrush(Color.FromArgb(150, 45, 45, 48)),
+                textBgRect);
+
+            context.DrawText(text, new Point(x + 3, HeaderHeight - 25));
         }
     }
 

@@ -271,61 +271,53 @@ public class ClipCanvasPanel : Control
     }
 
     /// <summary>
-    /// 오디오 웨이브폼 렌더링 (간단한 시뮬레이션)
+    /// 오디오 웨이브폼 렌더링 (DaVinci Resolve 스타일 - 고밀도)
     /// </summary>
     private void DrawAudioWaveform(DrawingContext context, Rect clipRect)
     {
-        const int SampleInterval = 4; // 4픽셀마다 샘플
-        const double MaxAmplitude = 0.4; // 클립 높이의 40%
+        const int SampleInterval = 2; // 2픽셀마다 샘플 (고밀도)
+        const double MaxAmplitude = 0.42; // 클립 높이의 42%
 
-        var waveformBrush = new SolidColorBrush(Color.FromArgb(180, 100, 200, 100)); // 반투명 밝은 초록
         var centerY = clipRect.Top + clipRect.Height / 2;
-
-        // 간단한 사인파 + 랜덤 노이즈로 웨이브폼 시뮬레이션
         var random = new System.Random((int)clipRect.X); // 일관된 랜덤 시드
-        var geometry = new StreamGeometry();
 
-        using (var ctx = geometry.Open())
+        // DaVinci Resolve 스타일 수직 바 렌더링
+        for (double x = clipRect.Left; x < clipRect.Right; x += SampleInterval)
         {
-            bool firstPoint = true;
-            for (double x = clipRect.Left; x < clipRect.Right; x += SampleInterval)
-            {
-                // 사인파 + 랜덤 노이즈
-                double phase = (x - clipRect.Left) / 20.0;
-                double sine = Math.Sin(phase) * 0.5;
-                double noise = (random.NextDouble() - 0.5) * 0.5;
-                double amplitude = (sine + noise) * MaxAmplitude * clipRect.Height;
+            // 복잡한 웨이브 생성 (여러 주파수 조합 - 사실적인 오디오 시뮬레이션)
+            double phase1 = (x - clipRect.Left) / 15.0;
+            double phase2 = (x - clipRect.Left) / 35.0;
+            double phase3 = (x - clipRect.Left) / 50.0;
 
-                var topPoint = new Point(x, centerY - Math.Abs(amplitude));
-                var bottomPoint = new Point(x, centerY + Math.Abs(amplitude));
+            double sine1 = Math.Sin(phase1) * 0.4;
+            double sine2 = Math.Sin(phase2) * 0.3;
+            double sine3 = Math.Sin(phase3) * 0.2;
+            double noise = (random.NextDouble() - 0.5) * 0.6;
 
-                if (firstPoint)
-                {
-                    ctx.BeginFigure(topPoint, true);
-                    firstPoint = false;
-                }
-                else
-                {
-                    ctx.LineTo(topPoint);
-                }
-            }
+            double combinedWave = (sine1 + sine2 + sine3 + noise) / 2.0;
+            double amplitude = Math.Abs(combinedWave) * MaxAmplitude * clipRect.Height;
 
-            // 하단 경로 (거울 대칭)
-            for (double x = clipRect.Right - SampleInterval; x >= clipRect.Left; x -= SampleInterval)
-            {
-                double phase = (x - clipRect.Left) / 20.0;
-                double sine = Math.Sin(phase) * 0.5;
-                double noise = (random.NextDouble() - 0.5) * 0.5;
-                double amplitude = (sine + noise) * MaxAmplitude * clipRect.Height;
+            // 수직 바 그리기 (그라데이션 효과)
+            var topY = centerY - amplitude;
+            var bottomY = centerY + amplitude;
 
-                var bottomPoint = new Point(x, centerY + Math.Abs(amplitude));
-                ctx.LineTo(bottomPoint);
-            }
+            // 밝은 초록색 (DaVinci Resolve 스타일)
+            var pen = new Pen(
+                new SolidColorBrush(Color.FromArgb(200, 130, 230, 130)),
+                1.4);
 
-            ctx.EndFigure(true);
+            context.DrawLine(pen,
+                new Point(x, topY),
+                new Point(x, bottomY));
         }
 
-        context.DrawGeometry(waveformBrush, null, geometry);
+        // 중앙선 (가이드라인)
+        var centerLinePen = new Pen(
+            new SolidColorBrush(Color.FromArgb(70, 160, 255, 160)),
+            0.6);
+        context.DrawLine(centerLinePen,
+            new Point(clipRect.Left, centerY),
+            new Point(clipRect.Right, centerY));
     }
 
     private void DrawKeyframes(DrawingContext context, ClipModel clip)
