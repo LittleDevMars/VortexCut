@@ -3,12 +3,14 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using VortexCut.Core.Models;
 using VortexCut.UI.ViewModels;
+using VortexCut.UI.Services;
 
 namespace VortexCut.UI.Views;
 
 public partial class MainWindow : Window
 {
     private MainViewModel? _viewModel;
+    private readonly ToastService _toastService = new();
 
     public MainWindow()
     {
@@ -23,8 +25,21 @@ public partial class MainWindow : Window
         Opened += (sender, e) =>
         {
             _viewModel.SetStorageProvider(StorageProvider);
+
+            // Toast 서비스 초기화
+            var toastContainer = this.FindControl<Grid>("ToastContainer");
+            if (toastContainer != null)
+            {
+                System.Diagnostics.Debug.WriteLine("✅ ToastContainer found, initializing ToastService...");
+                _toastService.Initialize(toastContainer);
+                _viewModel.SetToastService(_toastService);
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine("❌ ToastContainer NOT found!");
+            }
+
             _viewModel.Initialize(); // 첫 프로젝트 생성
-            InitializeTimeline();
         };
     }
 
@@ -131,16 +146,25 @@ public partial class MainWindow : Window
 
             // 재생
             case Key.Space:
-                // Space: 재생/정지 토글
-                _viewModel.Timeline.TogglePlayback();
+                // Space: 재생/일시정지
+                _viewModel.PlayPauseCommand.Execute(null);
                 e.Handled = true;
                 break;
 
-            // In/Out 포인트
+            // In/Out 포인트 & Import
             case Key.I:
-                // I: In 포인트 설정
-                _viewModel.Timeline.SetInPoint(_viewModel.Timeline.CurrentTimeMs);
-                e.Handled = true;
+                if (isCtrl)
+                {
+                    // Ctrl+I: 미디어 임포트
+                    _ = _viewModel.OpenVideoFileCommand.ExecuteAsync(null);
+                    e.Handled = true;
+                }
+                else
+                {
+                    // I: In 포인트 설정
+                    _viewModel.Timeline.SetInPoint(_viewModel.Timeline.CurrentTimeMs);
+                    e.Handled = true;
+                }
                 break;
 
             case Key.O:
@@ -348,17 +372,5 @@ public partial class MainWindow : Window
             KeyframeSystemType.Rotation => clip.RotationKeyframes,
             _ => null
         };
-    }
-
-    private void InitializeTimeline()
-    {
-        if (_viewModel == null) return;
-
-        // TimelineCanvas에 ViewModel 설정
-        var canvas = this.FindControl<Controls.TimelineCanvas>("TimelineCanvas");
-        if (canvas != null)
-        {
-            canvas.ViewModel = _viewModel.Timeline;
-        }
     }
 }

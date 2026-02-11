@@ -17,6 +17,7 @@ public class TimelineHeader : Control
     private double _pixelsPerMs = 0.1;
     private double _scrollOffsetX = 0;
     private MarkerModel? _hoveredMarker;
+    private bool _isDraggingPlayhead = false;
 
     public void SetViewModel(TimelineViewModel viewModel)
     {
@@ -28,7 +29,7 @@ public class TimelineHeader : Control
 
     public void SetZoom(double pixelsPerMs)
     {
-        _pixelsPerMs = Math.Clamp(pixelsPerMs, 0.01, 1.0);
+        _pixelsPerMs = Math.Clamp(pixelsPerMs, 0.01, 5.0); // 최대 500%까지 확대
         InvalidateVisual();
     }
 
@@ -73,6 +74,7 @@ public class TimelineHeader : Control
         {
             DrawMarkers(context);
             DrawInOutPoints(context);
+            DrawPlayhead(context); // Playhead 렌더링
         }
 
         // 상태 정보 표시 (우측 상단)
@@ -560,6 +562,14 @@ public class TimelineHeader : Control
             _viewModel.CurrentTimeMs = clickedMarker.TimeMs;
             e.Handled = true;
         }
+        else
+        {
+            // 마커가 아닌 곳을 클릭하면 Playhead 이동
+            long timeMs = XToTime(point.X);
+            _viewModel.CurrentTimeMs = Math.Max(0, timeMs);
+            _isDraggingPlayhead = true;
+            e.Handled = true;
+        }
     }
 
     protected override void OnPointerMoved(PointerEventArgs e)
@@ -567,6 +577,14 @@ public class TimelineHeader : Control
         base.OnPointerMoved(e);
 
         var point = e.GetPosition(this);
+
+        // Playhead 드래그 중이면 계속 업데이트
+        if (_isDraggingPlayhead && _viewModel != null)
+        {
+            long timeMs = XToTime(point.X);
+            _viewModel.CurrentTimeMs = Math.Max(0, timeMs);
+        }
+
         var newHoveredMarker = GetMarkerAtPosition(point, threshold: 20);
 
         if (newHoveredMarker != _hoveredMarker)
@@ -574,6 +592,12 @@ public class TimelineHeader : Control
             _hoveredMarker = newHoveredMarker;
             InvalidateVisual();
         }
+    }
+
+    protected override void OnPointerReleased(PointerReleasedEventArgs e)
+    {
+        base.OnPointerReleased(e);
+        _isDraggingPlayhead = false;
     }
 
     /// <summary>
@@ -701,8 +725,120 @@ public class TimelineHeader : Control
         }
     }
 
+    /// <summary>
+    /// Playhead (재생 헤드) 시각화
+    /// </summary>
+    private void DrawPlayhead(DrawingContext context)
+    {
+        if (_viewModel == null) return;
+
+        double x = TimeToX(_viewModel.CurrentTimeMs);
+
+        // 화면 밖이면 렌더링하지 않음
+        if (x < 0 || x > Bounds.Width)
+            return;
+
+        bool isPlaying = _viewModel.IsPlaying;
+        var baseColor = Color.FromRgb(255, 90, 0); // 주황색 (#FF5A00)
+
+        // 재생 중일 때 글로우 애니메이션
+        if (isPlaying)
+        {
+            // 글로우 레이어 (넓은 반투명)
+            var glowPen = new Pen(
+                new SolidColorBrush(Color.FromArgb(80, baseColor.R, baseColor.G, baseColor.B)),
+                6);
+            context.DrawLine(glowPen,
+                new Point(x, 0),
+                new Point(x, HeaderHeight));
+
+            // 중간 글로우 (좁은 반투명)
+            var midGlowPen = new Pen(
+                new SolidColorBrush(Color.FromArgb(120, baseColor.R, baseColor.G, baseColor.B)),
+                3);
+            context.DrawLine(midGlowPen,
+                new Point(x, 0),
+                new Point(x, HeaderHeight));
+        }
+
+        // Playhead 수직선 (메인)
+        var linePen = new Pen(new SolidColorBrush(baseColor), 2);
+        context.DrawLine(linePen,
+            new Point(x, 0),
+            new Point(x, HeaderHeight));
+
+        // 상단 핸들 (삼각형 + 사각형 드래그 영역)
+        const double handleWidth = 16;
+        const double handleHeight = 12;
+
+        // 핸들 그림자
+        var shadowGeometry = new StreamGeometry();
+        using (var ctx = shadowGeometry.Open())
+        {
+            ctx.BeginFigure(new Point(x + 1, 1), true);
+            ctx.LineTo(new Point(x - handleWidth / 2 + 1, handleHeight + 1));
+            ctx.LineTo(new Point(x + handleWidth / 2 + 1, handleHeight + 1));
+            ctx.EndFigure(true);
+        }
+        context.DrawGeometry(
+            new SolidColorBrush(Color.FromArgb(120, 0, 0, 0)),
+            null,
+            shadowGeometry);
+
+        // 핸들 본체 (그라디언트)
+        var handleGeometry = new StreamGeometry();
+        using (var ctx = handleGeometry.Open())
+        {
+            ctx.BeginFigure(new Point(x, 0), true);
+            ctx.LineTo(new Point(x - handleWidth / 2, handleHeight));
+            ctx.LineTo(new Point(x + handleWidth / 2, handleHeight));
+            ctx.EndFigure(true);
+        }
+
+        var handleGradient = new LinearGradientBrush
+        {
+            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+            EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+            GradientStops = new GradientStops
+            {
+                new GradientStop(baseColor, 0),
+                new GradientStop(Color.FromRgb(
+                    (byte)Math.Max(0, baseColor.R - 50),
+                    (byte)Math.Max(0, baseColor.G - 50),
+                    (byte)Math.Max(0, baseColor.B - 50)), 1)
+            }
+        };
+
+        context.DrawGeometry(
+            handleGradient,
+            new Pen(Brushes.White, 1.5),
+            handleGeometry);
+
+        // 재생 중 표시 (핸들 안에 작은 삼각형)
+        if (isPlaying)
+        {
+            var playIconGeometry = new StreamGeometry();
+            using (var ctx = playIconGeometry.Open())
+            {
+                ctx.BeginFigure(new Point(x - 3, 4), true);
+                ctx.LineTo(new Point(x + 3, 7));
+                ctx.LineTo(new Point(x - 3, 10));
+                ctx.EndFigure(true);
+            }
+            context.DrawGeometry(
+                Brushes.White,
+                null,
+                playIconGeometry);
+        }
+    }
+
     private double TimeToX(long timeMs)
     {
         return timeMs * _pixelsPerMs - _scrollOffsetX;
+    }
+
+    private long XToTime(double x)
+    {
+        return (long)((x + _scrollOffsetX) / _pixelsPerMs);
     }
 }

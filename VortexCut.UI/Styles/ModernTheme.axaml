@@ -1,0 +1,241 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Styles.Resources>
+        <!-- Professional Dark Theme Palette (VS Code/Kdenlive 스타일) -->
+        <Color x:Key="ColorBgDark">#0F0F0F</Color>
+        <Color x:Key="ColorBgBase">#121212</Color>
+        <Color x:Key="ColorBgPanel">#1E1E1E</Color>
+        <Color x:Key="ColorBgHeader">#252526</Color>
+        <Color x:Key="ColorBgHeaderHover">#2D2D30</Color>
+        <Color x:Key="ColorBorder">#3E3E42</Color>
+        <Color x:Key="ColorBorderLight">#555555</Color>
+
+        <!-- Accent Colors -->
+        <Color x:Key="ColorAccent">#007ACC</Color>
+        <Color x:Key="ColorAccentHover">#1C97EA</Color>
+        <Color x:Key="ColorAccentPressed">#005A9E</Color>
+        <Color x:Key="ColorSuccess">#4CAF50</Color>
+        <Color x:Key="ColorWarning">#FF9800</Color>
+        <Color x:Key="ColorError">#F44336</Color>
+        <Color x:Key="ColorInformation">#4FC3F7</Color>
+
+        <!-- Text Colors -->
+        <Color x:Key="ColorTextPrimary">#CCCCCC</Color>
+        <Color x:Key="ColorTextBright">#FFFFFF</Color>
+        <Color x:Key="ColorTextSecondary">#969696</Color>
+        <Color x:Key="ColorTextDisabled">#555555</Color>
+        <Color x:Key="ColorTextHint">#6E6E6E</Color>
+
+        <!-- Brushes -->
+        <SolidColorBrush x:Key="BgDarkBrush" Color="{StaticResource ColorBgDark}"/>
+        <SolidColorBrush x:Key="BgBaseBrush" Color="{StaticResource ColorBgBase}"/>
+        <SolidColorBrush x:Key="BgPanelBrush" Color="{StaticResource ColorBgPanel}"/>
+        <SolidColorBrush x:Key="BgHeaderBrush" Color="{StaticResource ColorBgHeader}"/>
+        <SolidColorBrush x:Key="BgHeaderHoverBrush" Color="{StaticResource ColorBgHeaderHover}"/>
+        <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource ColorBorder}"/>
+        <SolidColorBrush x:Key="BorderLightBrush" Color="{StaticResource ColorBorderLight}"/>
+
+        <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource ColorAccent}"/>
+        <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource ColorAccentHover}"/>
+        <SolidColorBrush x:Key="AccentPressedBrush" Color="{StaticResource ColorAccentPressed}"/>
+        <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource ColorSuccess}"/>
+        <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource ColorWarning}"/>
+        <SolidColorBrush x:Key="ErrorBrush" Color="{StaticResource ColorError}"/>
+        <SolidColorBrush x:Key="InformationBrush" Color="{StaticResource ColorInformation}"/>
+
+        <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource ColorTextPrimary}"/>
+        <SolidColorBrush x:Key="TextBrightBrush" Color="{StaticResource ColorTextBright}"/>
+        <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource ColorTextSecondary}"/>
+        <SolidColorBrush x:Key="TextDisabledBrush" Color="{StaticResource ColorTextDisabled}"/>
+        <SolidColorBrush x:Key="TextHintBrush" Color="{StaticResource ColorTextHint}"/>
+
+        <!-- Gradients -->
+        <LinearGradientBrush x:Key="HeaderGradientBrush" StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Color="#2D2D30" Offset="0"/>
+            <GradientStop Color="#252526" Offset="1"/>
+        </LinearGradientBrush>
+
+        <!-- ========== Icon Geometries (16x16 viewbox) ========== -->
+        <!-- Transport -->
+        <StreamGeometry x:Key="IconPlay">M 4,2 L 4,14 L 13,8 Z</StreamGeometry>
+        <StreamGeometry x:Key="IconPause">M 3,2 L 6,2 L 6,14 L 3,14 Z M 10,2 L 13,2 L 13,14 L 10,14 Z</StreamGeometry>
+        <StreamGeometry x:Key="IconPrevFrame">M 2,3 L 4,3 L 4,13 L 2,13 Z M 13,2 L 6,8 L 13,14 Z</StreamGeometry>
+        <StreamGeometry x:Key="IconNextFrame">M 3,2 L 10,8 L 3,14 Z M 12,3 L 14,3 L 14,13 L 12,13 Z</StreamGeometry>
+        <StreamGeometry x:Key="IconStop">M 3,3 L 13,3 L 13,13 L 3,13 Z</StreamGeometry>
+
+        <!-- Tools -->
+        <StreamGeometry x:Key="IconRazor">M 3,1 L 7,7 L 5,9 L 1,15 L 3,15 L 6,11 L 8,13 L 10,11 L 8,9 L 10,7 L 13,11 L 15,11 L 9,3 Z</StreamGeometry>
+        <StreamGeometry x:Key="IconSnap">M 3,2 L 3,10 C 3,13 5,15 8,15 C 11,15 13,13 13,10 L 13,2 L 11,2 L 11,10 C 11,12 10,13 8,13 C 6,13 5,12 5,10 L 5,2 Z M 2,0 L 6,0 L 6,2 L 2,2 Z M 10,0 L 14,0 L 14,2 L 10,2 Z</StreamGeometry>
+        <StreamGeometry x:Key="IconMarkerAdd">M 8,1 L 8,15 M 1,8 L 15,8</StreamGeometry>
+        <StreamGeometry x:Key="IconPlus">M 7,2 L 9,2 L 9,7 L 14,7 L 14,9 L 9,9 L 9,14 L 7,14 L 7,9 L 2,9 L 2,7 L 7,7 Z</StreamGeometry>
+        <StreamGeometry x:Key="IconSearch">M 6.5,1 C 3.5,1 1,3.5 1,6.5 C 1,9.5 3.5,12 6.5,12 C 7.9,12 9.2,11.5 10.2,10.6 L 14,14.4 L 15.4,13 L 11.6,9.2 C 12.2,8.3 12.5,7.4 12.5,6.5 C 12.5,3.5 10,1 6.5,1 Z M 6.5,3 C 8.7,3 10.5,4.8 10.5,6.5 C 10.5,8.7 8.7,10 6.5,10 C 4.3,10 2.5,8.7 2.5,6.5 C 2.5,4.3 4.3,3 6.5,3 Z</StreamGeometry>
+
+        <!-- Settings/UI -->
+        <StreamGeometry x:Key="IconGear">M 8,5.5 C 6.6,5.5 5.5,6.6 5.5,8 C 5.5,9.4 6.6,10.5 8,10.5 C 9.4,10.5 10.5,9.4 10.5,8 C 10.5,6.6 9.4,5.5 8,5.5 Z M 13.5,8 C 13.5,7.5 13.4,7 13.3,6.5 L 15,5.3 L 13.5,2.7 L 11.5,3.5 C 10.8,2.9 10,2.5 9.1,2.2 L 8.8,0 L 7.2,0 L 6.9,2.2 C 6,2.5 5.2,2.9 4.5,3.5 L 2.5,2.7 L 1,5.3 L 2.7,6.5 C 2.6,7 2.5,7.5 2.5,8 C 2.5,8.5 2.6,9 2.7,9.5 L 1,10.7 L 2.5,13.3 L 4.5,12.5 C 5.2,13.1 6,13.5 6.9,13.8 L 7.2,16 L 8.8,16 L 9.1,13.8 C 10,13.5 10.8,13.1 11.5,12.5 L 13.5,13.3 L 15,10.7 L 13.3,9.5 C 13.4,9 13.5,8.5 13.5,8 Z</StreamGeometry>
+        <StreamGeometry x:Key="IconFullscreen">M 1,1 L 6,1 L 6,3 L 3,3 L 3,6 L 1,6 Z M 10,1 L 15,1 L 15,6 L 13,6 L 13,3 L 10,3 Z M 1,10 L 3,10 L 3,13 L 6,13 L 6,15 L 1,15 Z M 13,10 L 15,10 L 15,15 L 10,15 L 10,13 L 13,13 Z</StreamGeometry>
+        <StreamGeometry x:Key="IconFolder">M 1,3 L 6,3 L 8,5 L 15,5 L 15,14 L 1,14 Z</StreamGeometry>
+        <StreamGeometry x:Key="IconFilm">M 2,1 L 14,1 L 14,15 L 2,15 Z M 4,4 L 6,4 L 6,6 L 4,6 Z M 10,4 L 12,4 L 12,6 L 10,6 Z M 4,10 L 6,10 L 6,12 L 4,12 Z M 10,10 L 12,10 L 12,12 L 10,12 Z</StreamGeometry>
+    </Styles.Resources>
+
+    <!-- ========================================
+         BASE STYLES
+         ======================================== -->
+    <Style Selector="Window">
+        <Setter Property="Background" Value="{StaticResource BgDarkBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        <Setter Property="FontFamily" Value="Segoe UI, Inter, -apple-system, BlinkMacSystemFont, sans-serif"/>
+        <Setter Property="FontSize" Value="13"/>
+    </Style>
+
+    <!-- ========================================
+         PANEL HEADER (DaVinci Resolve Style)
+         ======================================== -->
+    <Style Selector="Border.PanelHeader">
+        <Setter Property="Background" Value="{StaticResource HeaderGradientBrush}"/>
+        <Setter Property="Padding" Value="12,6"/>
+        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+    </Style>
+
+    <Style Selector="TextBlock.PanelTitle">
+        <Setter Property="FontSize" Value="10"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="LetterSpacing" Value="1.5"/>
+    </Style>
+
+    <!-- ========================================
+         TOOLBAR BUTTON (Premiere Pro Style)
+         ======================================== -->
+    <Style Selector="Button.ToolButton">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="Padding" Value="10,6"/>
+        <Setter Property="CornerRadius" Value="3"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Transitions">
+            <Transitions>
+                <BrushTransition Property="Background" Duration="0:0:0.15"/>
+                <BrushTransition Property="BorderBrush" Duration="0:0:0.15"/>
+            </Transitions>
+        </Setter>
+    </Style>
+    <Style Selector="Button.ToolButton:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource BgHeaderHoverBrush}"/>
+    </Style>
+    <Style Selector="Button.ToolButton:pressed /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource BorderLightBrush}"/>
+    </Style>
+
+    <!-- Primary Button (Accent) -->
+    <Style Selector="Button.PrimaryButton">
+        <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="16,8"/>
+        <Setter Property="CornerRadius" Value="4"/>
+        <Setter Property="Foreground" Value="{StaticResource TextBrightBrush}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Transitions">
+            <Transitions>
+                <BrushTransition Property="Background" Duration="0:0:0.15"/>
+            </Transitions>
+        </Setter>
+    </Style>
+    <Style Selector="Button.PrimaryButton:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource AccentHoverBrush}"/>
+    </Style>
+    <Style Selector="Button.PrimaryButton:pressed /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource AccentPressedBrush}"/>
+    </Style>
+
+    <!-- ========================================
+         MENU STYLE
+         ======================================== -->
+    <Style Selector="Menu">
+        <Setter Property="Background" Value="Transparent"/>
+    </Style>
+    <Style Selector="MenuItem">
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        <Setter Property="FontSize" Value="12.5"/>
+        <Setter Property="Padding" Value="10,6"/>
+    </Style>
+    <Style Selector="MenuItem:pointerover /template/ Border#PART_LayoutRoot">
+        <Setter Property="Background" Value="{StaticResource BgHeaderHoverBrush}"/>
+    </Style>
+
+    <!-- ========================================
+         GRIDSPLITTER (Smooth Transition)
+         ======================================== -->
+    <Style Selector="GridSplitter">
+        <Setter Property="Background" Value="{StaticResource BorderBrush}"/>
+        <Setter Property="Opacity" Value="0.3"/>
+        <Setter Property="Transitions">
+            <Transitions>
+                <DoubleTransition Property="Opacity" Duration="0:0:0.2"/>
+            </Transitions>
+        </Setter>
+    </Style>
+    <Style Selector="GridSplitter:pointerover">
+        <Setter Property="Opacity" Value="1"/>
+        <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+    </Style>
+
+    <!-- ========================================
+         TEXTBOX / INPUT STYLE
+         ======================================== -->
+    <Style Selector="TextBox">
+        <Setter Property="Background" Value="{StaticResource BgDarkBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Padding" Value="8,6"/>
+        <Setter Property="CornerRadius" Value="3"/>
+    </Style>
+    <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+        <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+    </Style>
+
+    <!-- ========================================
+         LISTBOX STYLE
+         ======================================== -->
+    <Style Selector="ListBox">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+    <Style Selector="ListBoxItem">
+        <Setter Property="Padding" Value="8,6"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+    </Style>
+    <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource BgHeaderHoverBrush}"/>
+    </Style>
+    <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+        <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource TextBrightBrush}"/>
+    </Style>
+
+    <!-- ========================================
+         SCROLLBAR STYLE (Minimal Dark)
+         ======================================== -->
+    <Style Selector="ScrollBar">
+        <Setter Property="Background" Value="Transparent"/>
+    </Style>
+    <Style Selector="ScrollBar:vertical">
+        <Setter Property="Width" Value="10"/>
+    </Style>
+    <Style Selector="ScrollBar:horizontal">
+        <Setter Property="Height" Value="10"/>
+    </Style>
+    <Style Selector="ScrollBar /template/ Thumb">
+        <Setter Property="Background" Value="{StaticResource BorderLightBrush}"/>
+        <Setter Property="CornerRadius" Value="5"/>
+    </Style>
+    <Style Selector="ScrollBar /template/ Thumb:pointerover">
+        <Setter Property="Background" Value="{StaticResource TextSecondaryBrush}"/>
+    </Style>
+</Styles>

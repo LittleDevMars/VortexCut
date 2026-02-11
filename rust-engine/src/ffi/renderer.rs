@@ -2,11 +2,13 @@
 
 use crate::rendering::Renderer;
 use crate::timeline::Timeline;
+use crate::ffmpeg::Decoder;
 use crate::ffi::types::ErrorCode;
-use std::ffi::c_void;
+use std::ffi::{c_void, c_char, CStr};
 use std::sync::{Arc, Mutex};
+use std::path::PathBuf;
 
-/// Renderer 생성
+/// Renderer 생성 (Mutex로 감싸서 thread-safe 보장)
 #[no_mangle]
 pub extern "C" fn renderer_create(timeline: *mut c_void, out_renderer: *mut *mut c_void) -> i32 {
     if timeline.is_null() || out_renderer.is_null() {
@@ -14,14 +16,19 @@ pub extern "C" fn renderer_create(timeline: *mut c_void, out_renderer: *mut *mut
     }
 
     unsafe {
+        // Arc::into_raw()는 *const Mutex<Timeline>을 반환함
         let timeline_arc = Arc::from_raw(timeline as *const Mutex<Timeline>);
         let timeline_clone = Arc::clone(&timeline_arc);
 
-        // Arc를 다시 raw로 변환 (소유권 유지)
+        // 원본 Arc의 소유권 유지 (C#이 관리)
         let _ = Arc::into_raw(timeline_arc);
 
-        let renderer = Box::new(Renderer::new(timeline_clone));
-        *out_renderer = Box::into_raw(renderer) as *mut c_void;
+        let renderer = Renderer::new(timeline_clone);
+        // CRITICAL: Renderer를 Mutex로 감싸서 동시 접근 방지
+        let renderer_mutex = Box::new(Mutex::new(renderer));
+        *out_renderer = Box::into_raw(renderer_mutex) as *mut c_void;
+
+        println!("✅ renderer_create: Renderer created with Mutex protection");
     }
 
     ErrorCode::Success as i32
@@ -35,13 +42,15 @@ pub extern "C" fn renderer_destroy(renderer: *mut c_void) -> i32 {
     }
 
     unsafe {
-        let _ = Box::from_raw(renderer as *mut Renderer);
+        // Mutex<Renderer>를 Box로 다시 감싸서 drop
+        let _ = Box::from_raw(renderer as *mut Mutex<Renderer>);
+        println!("✅ renderer_destroy: Renderer destroyed");
     }
 
     ErrorCode::Success as i32
 }
 
-/// 프레임 렌더링
+/// 프레임 렌더링 (Mutex로 동시 접근 방지)
 #[no_mangle]
 pub extern "C" fn renderer_render_frame(
     renderer: *mut c_void,
@@ -53,14 +62,32 @@ pub extern "C" fn renderer_render_frame(
 ) -> i32 {
     if renderer.is_null() || out_width.is_null() || out_height.is_null()
         || out_data.is_null() || out_data_size.is_null() {
+        println!("❌ renderer_render_frame: NULL pointer detected!");
         return ErrorCode::NullPointer as i32;
     }
 
-    unsafe {
-        let renderer = &mut *(renderer as *mut Renderer);
+    println!("🎬 renderer_render_frame: timestamp_ms={}, renderer=0x{:X}", timestamp_ms, renderer as usize);
 
-        match renderer.render_frame(timestamp_ms) {
+    unsafe {
+        // CRITICAL: Mutex를 통해 Renderer에 접근 (thread-safe)
+        let renderer_mutex = &*(renderer as *const Mutex<Renderer>);
+
+        println!("   🔒 Attempting to lock renderer (try_lock, non-blocking)...");
+        let mut renderer_ref = match renderer_mutex.try_lock() {
+            Ok(r) => {
+                println!("   ✅ Renderer locked successfully");
+                r
+            }
+            Err(_) => {
+                println!("   ⏭️ Renderer busy, frame SKIPPED at {}ms", timestamp_ms);
+                // 이미 렌더링 중이면 프레임 드랍 (에러 아님)
+                return ErrorCode::Success as i32;
+            }
+        };
+
+        match renderer_ref.render_frame(timestamp_ms) {
             Ok(frame) => {
+                println!("✅ renderer_render_frame: Frame rendered {}x{}, {} bytes", frame.width, frame.height, frame.data.len());
                 *out_width = frame.width;
                 *out_height = frame.height;
                 *out_data_size = frame.data.len();
@@ -69,10 +96,15 @@ pub extern "C" fn renderer_render_frame(
                 let data_box = frame.data.into_boxed_slice();
                 *out_data = Box::into_raw(data_box) as *mut u8;
 
+                println!("   🔓 Renderer will be unlocked (lock guard dropped)");
                 ErrorCode::Success as i32
             }
-            Err(_) => ErrorCode::RenderFailed as i32,
+            Err(e) => {
+                println!("❌ renderer_render_frame: Render failed: {}", e);
+                ErrorCode::RenderFailed as i32
+            }
         }
+        // Mutex lock은 여기서 자동으로 해제됨 (MutexGuard drop)
     }
 }
 
@@ -89,4 +121,118 @@ pub extern "C" fn renderer_free_frame_data(data: *mut u8, size: usize) -> i32 {
     }
 
     ErrorCode::Success as i32
+}
+
+/// 비디오 파일 정보 조회 (duration, width, height, fps)
+#[no_mangle]
+pub extern "C" fn get_video_info(
+    file_path: *const c_char,
+    out_duration_ms: *mut i64,
+    out_width: *mut u32,
+    out_height: *mut u32,
+    out_fps: *mut f64,
+) -> i32 {
+    if file_path.is_null() || out_duration_ms.is_null()
+        || out_width.is_null() || out_height.is_null() || out_fps.is_null() {
+        return ErrorCode::NullPointer as i32;
+    }
+
+    unsafe {
+        let c_str = CStr::from_ptr(file_path);
+        let file_path_str = match c_str.to_str() {
+            Ok(s) => s,
+            Err(e) => {
+                println!("❌ get_video_info: Invalid UTF-8: {}", e);
+                return ErrorCode::InvalidParam as i32;
+            }
+        };
+
+        let path = PathBuf::from(file_path_str);
+        println!("📋 get_video_info: file={}", file_path_str);
+
+        let decoder = match Decoder::open(&path) {
+            Ok(d) => d,
+            Err(e) => {
+                println!("❌ get_video_info: Failed to open decoder: {}", e);
+                return ErrorCode::Ffmpeg as i32;
+            }
+        };
+
+        *out_duration_ms = decoder.duration_ms();
+        *out_width = decoder.width();
+        *out_height = decoder.height();
+        *out_fps = decoder.fps();
+
+        println!("✅ get_video_info: duration={}ms, {}x{}, fps={:.2}",
+                 decoder.duration_ms(), decoder.width(), decoder.height(), decoder.fps());
+    }
+
+    ErrorCode::Success as i32
+}
+
+/// 비디오 썸네일 생성 (스탠드얼론 함수)
+#[no_mangle]
+pub extern "C" fn generate_video_thumbnail(
+    file_path: *const c_char,
+    timestamp_ms: i64,
+    thumb_width: u32,
+    thumb_height: u32,
+    out_width: *mut u32,
+    out_height: *mut u32,
+    out_data: *mut *mut u8,
+    out_data_size: *mut usize,
+) -> i32 {
+    if file_path.is_null() || out_width.is_null() || out_height.is_null()
+        || out_data.is_null() || out_data_size.is_null() {
+        println!("❌ generate_video_thumbnail: NULL pointer detected!");
+        return ErrorCode::NullPointer as i32;
+    }
+
+    unsafe {
+        // C 문자열을 Rust 문자열로 변환
+        let c_str = CStr::from_ptr(file_path);
+        let file_path_str = match c_str.to_str() {
+            Ok(s) => s,
+            Err(e) => {
+                println!("❌ generate_video_thumbnail: Invalid UTF-8: {}", e);
+                return ErrorCode::InvalidParam as i32;
+            }
+        };
+
+        let path = PathBuf::from(file_path_str);
+        println!("📸 generate_video_thumbnail: file={}, timestamp={}ms, size={}x{}",
+                 file_path_str, timestamp_ms, thumb_width, thumb_height);
+
+        // 임시 Decoder 생성
+        let mut decoder = match Decoder::open(&path) {
+            Ok(d) => d,
+            Err(e) => {
+                println!("❌ generate_video_thumbnail: Failed to open decoder: {}", e);
+                return ErrorCode::Ffmpeg as i32;
+            }
+        };
+
+        // 썸네일 생성
+        match decoder.generate_thumbnail(timestamp_ms, thumb_width, thumb_height) {
+            Ok(frame) => {
+                println!("✅ generate_video_thumbnail: Thumbnail generated {}x{}, {} bytes",
+                         frame.width, frame.height, frame.data.len());
+
+                *out_width = frame.width;
+                *out_height = frame.height;
+                *out_data_size = frame.data.len();
+
+                // 데이터를 힙에 할당하고 포인터 반환
+                let data_box = frame.data.into_boxed_slice();
+                *out_data = Box::into_raw(data_box) as *mut u8;
+
+                ErrorCode::Success as i32
+            }
+            Err(e) => {
+                println!("❌ generate_video_thumbnail: Failed to generate thumbnail: {}", e);
+                ErrorCode::Ffmpeg as i32
+            }
+        }
+        // Decoder는 여기서 자동으로 drop됨
+    }
 }

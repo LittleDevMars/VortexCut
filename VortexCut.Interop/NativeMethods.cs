@@ -114,6 +114,26 @@ public static class NativeMethods
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern int timeline_get_audio_track_count(IntPtr timeline, out nuint outCount);
 
+    /// <summary>
+    /// 특정 비디오 트랙의 클립 개수 가져오기
+    /// </summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int timeline_get_video_clip_count(IntPtr timeline, ulong trackId, out nuint outCount);
+
+    // ==================== Video Info Functions ====================
+
+    /// <summary>
+    /// 비디오 파일 정보 조회 (duration, width, height, fps)
+    /// filePath는 UTF-8 인코딩된 IntPtr (Marshal.StringToCoTaskMemUTF8 사용)
+    /// </summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int get_video_info(
+        IntPtr filePath,
+        out long outDurationMs,
+        out uint outWidth,
+        out uint outHeight,
+        out double outFps);
+
     // ==================== Renderer Functions ====================
 
     /// <summary>
@@ -145,4 +165,18 @@ public static class NativeMethods
     /// </summary>
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern int renderer_free_frame_data(IntPtr data, nuint size);
+
+    /// <summary>
+    /// 비디오 썸네일 생성 (스탠드얼론 함수)
+    /// </summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+    public static extern int generate_video_thumbnail(
+        [MarshalAs(UnmanagedType.LPStr)] string filePath,
+        long timestampMs,
+        uint thumbWidth,
+        uint thumbHeight,
+        out uint outWidth,
+        out uint outHeight,
+        out IntPtr outData,
+        out nuint outDataSize);
 }

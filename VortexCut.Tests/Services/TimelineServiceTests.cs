@@ -1,14 +1,15 @@
 using VortexCut.Interop.Services;
+using VortexCut.Tests.Helpers;
 using Xunit;
 
 namespace VortexCut.Tests.Services;
 
 /// <summary>
-/// TimelineService 통합 테스트
+/// TimelineService 통합 테스트 (네이티브 DLL 필요)
 /// </summary>
 public class TimelineServiceTests
 {
-    [Fact]
+    [FactRequiresNativeDll]
     public void CreateTimeline_ValidParameters_Success()
     {
         // Arrange & Act
@@ -21,7 +22,7 @@ public class TimelineServiceTests
         Assert.Equal(0, service.GetDuration());
     }
 
-    [Fact]
+    [FactRequiresNativeDll]
     public void AddVideoTrack_Success()
     {
         // Arrange
@@ -36,7 +37,7 @@ public class TimelineServiceTests
         Assert.Equal(1, service.GetVideoTrackCount());
     }
 
-    [Fact]
+    [FactRequiresNativeDll]
     public void AddAudioTrack_Success()
     {
         // Arrange
@@ -51,7 +52,7 @@ public class TimelineServiceTests
         Assert.Equal(1, service.GetAudioTrackCount());
     }
 
-    [Fact]
+    [FactRequiresNativeDll]
     public void AddVideoClip_ValidParameters_Success()
     {
         // Arrange
@@ -67,7 +68,7 @@ public class TimelineServiceTests
         Assert.Equal(5000, service.GetDuration());
     }
 
-    [Fact]
+    [FactRequiresNativeDll]
     public void AddMultipleClips_CalculatesDurationCorrectly()
     {
         // Arrange
@@ -83,7 +84,7 @@ public class TimelineServiceTests
         Assert.Equal(8000, service.GetDuration());
     }
 
-    [Fact]
+    [FactRequiresNativeDll]
     public void RemoveVideoClip_Success()
     {
         // Arrange
@@ -99,7 +100,7 @@ public class TimelineServiceTests
         Assert.Equal(0, service.GetDuration());
     }
 
-    [Fact]
+    [FactRequiresNativeDll]
     public void AddAudioClip_ValidParameters_Success()
     {
         // Arrange
@@ -115,7 +116,7 @@ public class TimelineServiceTests
         Assert.Equal(10000, service.GetDuration());
     }
 
-    [Fact]
+    [FactRequiresNativeDll]
     public void MultipleTracksAndClips_ComplexScenario()
     {
         // Arrange
@@ -137,7 +138,7 @@ public class TimelineServiceTests
         Assert.Equal(8000, service.GetDuration()); // 오디오가 가장 길음
     }
 
-    [Fact]
+    [FactRequiresNativeDll]
     public void Dispose_MultipleTimes_NoError()
     {
         // Arrange
@@ -150,7 +151,7 @@ public class TimelineServiceTests
         service.Dispose();
     }
 
-    [Fact]
+    [FactRequiresNativeDll]
     public void OperationAfterDispose_ThrowsException()
     {
         // Arrange
@@ -162,7 +163,7 @@ public class TimelineServiceTests
         Assert.Throws<ObjectDisposedException>(() => service.AddVideoTrack());
     }
 
-    [Fact]
+    [FactRequiresNativeDll]
     public void OperationWithoutTimeline_ThrowsException()
     {
         // Arrange

@@ -1,0 +1,70 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:VortexCut.UI.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="300"
+             x:Class="VortexCut.UI.Views.ProgramMonitorView"
+             x:DataType="vm:MainViewModel">
+    
+    <Grid RowDefinitions="Auto, *, Auto">
+        <Border Classes="PanelHeader">
+            <TextBlock Classes="PanelTitle" Text="PROGRAM MONITOR"/>
+        </Border>
+        
+        <!-- Preview -->
+        <Grid Grid.Row="1" Background="Black">
+            <Image Source="{Binding Preview.PreviewImage}" Stretch="Uniform" />
+
+            <!-- Proxy Indicator Badge -->
+            <Border Background="{StaticResource WarningBrush}"
+                    CornerRadius="3"
+                    Padding="8,4"
+                    Margin="12"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    IsVisible="False"
+                    ToolTip.Tip="Playing with proxy (low resolution)">
+                <TextBlock Text="PROXY"
+                          Foreground="Black"
+                          FontSize="10"
+                          FontWeight="Bold"/>
+            </Border>
+        </Grid>
+        
+        <!-- Controls -->
+        <Border Grid.Row="2" Background="{StaticResource BgHeaderBrush}" Padding="8" BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}">
+            <Grid ColumnDefinitions="Auto, *, Auto">
+                <Border Background="{StaticResource BgDarkBrush}" CornerRadius="3" Padding="10,4">
+                    <TextBlock FontFamily="Consolas, Courier New, monospace"
+                              FontSize="12"
+                              Foreground="{StaticResource AccentBrush}"
+                              VerticalAlignment="Center">
+                        <Run Text="{Binding Preview.CurrentTimeMs, StringFormat='{}{0:hh\\:mm\\:ss\\.fff}'}"/>
+                    </TextBlock>
+                </Border>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="4">
+                    <Button Classes="ToolButton" ToolTip.Tip="Previous Frame" Width="32" Height="28">
+                        <PathIcon Data="{StaticResource IconPrevFrame}" Width="14" Height="14" Foreground="{StaticResource TextPrimaryBrush}"/>
+                    </Button>
+                    <Button Classes="ToolButton" Width="40" Height="28" Command="{Binding PlayPauseCommand}" ToolTip.Tip="Play / Pause (Space)">
+                        <Border Background="{StaticResource AccentBrush}" CornerRadius="3" Padding="8,4">
+                            <PathIcon Data="{StaticResource IconPlay}" Width="12" Height="12" Foreground="White"/>
+                        </Border>
+                    </Button>
+                    <Button Classes="ToolButton" ToolTip.Tip="Next Frame" Width="32" Height="28">
+                        <PathIcon Data="{StaticResource IconNextFrame}" Width="14" Height="14" Foreground="{StaticResource TextPrimaryBrush}"/>
+                    </Button>
+                </StackPanel>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
+                    <Button Classes="ToolButton" ToolTip.Tip="Settings" Width="32" Height="28">
+                        <PathIcon Data="{StaticResource IconGear}" Width="14" Height="14" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </Button>
+                    <Button Classes="ToolButton" ToolTip.Tip="Fullscreen" Width="32" Height="28">
+                        <PathIcon Data="{StaticResource IconFullscreen}" Width="14" Height="14" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

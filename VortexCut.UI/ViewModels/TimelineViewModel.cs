@@ -117,18 +117,37 @@ public partial class TimelineViewModel : ViewModelBase
     /// </summary>
     public async Task AddVideoClipAsync(string filePath)
     {
+        System.Diagnostics.Debug.WriteLine($"🎬 AddVideoClipAsync START: {filePath}");
+        System.Diagnostics.Debug.WriteLine($"   CurrentTimeMs: {CurrentTimeMs}, Clips.Count: {Clips.Count}");
+
         await Task.Run(() =>
         {
-            // TODO: 실제 비디오 길이 가져오기 (FFmpeg 메타데이터)
-            long durationMs = 5000; // 임시로 5초
+            // Rust FFI로 실제 비디오 정보 조회
+            var videoInfo = VortexCut.Interop.Services.RenderService.GetVideoInfo(filePath);
+            long durationMs = videoInfo.DurationMs;
+            System.Diagnostics.Debug.WriteLine($"   📋 VideoInfo: duration={durationMs}ms, {videoInfo.Width}x{videoInfo.Height}, fps={videoInfo.Fps:F2}");
+
+            // duration이 0이면 fallback (메타데이터 없는 파일)
+            if (durationMs <= 0)
+            {
+                durationMs = 5000;
+                System.Diagnostics.Debug.WriteLine($"   ⚠️ Duration is 0, using fallback: {durationMs}ms");
+            }
+
+            System.Diagnostics.Debug.WriteLine($"   Calling _projectService.AddVideoClip...");
             var clip = _projectService.AddVideoClip(filePath, CurrentTimeMs, durationMs);
+            System.Diagnostics.Debug.WriteLine($"   ✅ Clip created: ID={clip.Id}, StartTimeMs={clip.StartTimeMs}, DurationMs={clip.DurationMs}, TrackIndex={clip.TrackIndex}");
 
             // UI 스레드에서 실행
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
             {
+                System.Diagnostics.Debug.WriteLine($"   🔵 Dispatcher.UIThread.Post - Adding clip to Clips collection...");
                 Clips.Add(clip);
+                System.Diagnostics.Debug.WriteLine($"   ✅ Clip added! Clips.Count is now: {Clips.Count}");
             });
         });
+
+        System.Diagnostics.Debug.WriteLine($"🎬 AddVideoClipAsync END (but Post might not have executed yet)");
     }
 
     /// <summary>

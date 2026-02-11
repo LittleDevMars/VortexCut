@@ -93,7 +93,7 @@ public class ClipCanvasPanel : Control
 
     public void SetZoom(double pixelsPerMs)
     {
-        _pixelsPerMs = Math.Clamp(pixelsPerMs, 0.01, 1.0);
+        _pixelsPerMs = Math.Clamp(pixelsPerMs, 0.01, 5.0); // 최대 500%까지 확대
         InvalidateVisual();
     }
 
@@ -337,6 +337,11 @@ public class ClipCanvasPanel : Control
 
     private void DrawClips(DrawingContext context)
     {
+        if (_clips.Count > 0)
+        {
+            System.Diagnostics.Debug.WriteLine($"📊 DrawClips: Rendering {_clips.Count} clips, _pixelsPerMs={_pixelsPerMs}");
+        }
+
         foreach (var clip in _clips)
         {
             bool isSelected = _viewModel?.SelectedClips.Contains(clip) ?? false;
@@ -350,10 +355,17 @@ public class ClipCanvasPanel : Control
         double x = TimeToX(clip.StartTimeMs);
         double width = DurationToWidth(clip.DurationMs);
 
+        System.Diagnostics.Debug.WriteLine($"   🎨 DrawClip: ID={clip.Id}, StartMs={clip.StartTimeMs}, DurationMs={clip.DurationMs}, TrackIndex={clip.TrackIndex}");
+        System.Diagnostics.Debug.WriteLine($"        Calculated: x={x:F2}, width={width:F2}, _pixelsPerMs={_pixelsPerMs}");
+
         // 트랙 Y 위치 계산
         double y = GetTrackYPosition(clip.TrackIndex);
         var track = GetTrackByIndex(clip.TrackIndex);
-        if (track == null) return;
+        if (track == null)
+        {
+            System.Diagnostics.Debug.WriteLine($"        ⚠️ Track is null for TrackIndex={clip.TrackIndex}!");
+            return;
+        }
 
         double height = track.Height - 10;
         var clipRect = new Rect(x, y + 5, Math.Max(width, MinClipWidth), height);
@@ -1855,9 +1867,9 @@ public class ClipCanvasPanel : Control
 
         if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
-            // Ctrl + 마우스휠: 수평 Zoom (0.01 ~ 1.0)
+            // Ctrl + 마우스휠: 수평 Zoom (0.01 ~ 5.0) - 최대 500%
             var zoomFactor = e.Delta.Y > 0 ? 1.1 : 0.9;
-            var newZoom = Math.Clamp(_pixelsPerMs * zoomFactor, 0.01, 1.0);
+            var newZoom = Math.Clamp(_pixelsPerMs * zoomFactor, 0.01, 5.0);
 
             // TimelineCanvas를 통해 전체 컴포넌트에 Zoom 적용
             var timelineCanvas = this.GetVisualAncestors().OfType<TimelineCanvas>().FirstOrDefault();

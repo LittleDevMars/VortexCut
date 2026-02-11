@@ -31,21 +31,45 @@ public class TimelineService : IDisposable
     private bool _disposed;
 
     /// <summary>
-    /// 타임라인 생성
+    /// 타임라인 생성 (기존 타임라인은 수동으로 먼저 해제해야 함)
     /// </summary>
     public void CreateTimeline(uint width, uint height, double fps)
     {
         ThrowIfDisposed();
 
+        // 주의: 기존 타임라인이 있으면 먼저 DestroyTimeline() 호출 필요
         if (_timeline != null && !_timeline.IsInvalid)
         {
-            throw new InvalidOperationException("Timeline already created");
+            throw new InvalidOperationException("Timeline already exists. Call DestroyTimeline() first.");
         }
 
         int result = NativeMethods.timeline_create(width, height, fps, out IntPtr timelinePtr);
         CheckError(result);
 
         _timeline = new TimelineHandle(timelinePtr);
+    }
+
+    /// <summary>
+    /// 타임라인 명시적 해제
+    /// </summary>
+    public void DestroyTimeline()
+    {
+        if (_timeline != null && !_timeline.IsInvalid)
+        {
+            _timeline.Dispose();
+            _timeline = null;
+        }
+    }
+
+    /// <summary>
+    /// 타임라인 핸들 가져오기 (RenderService 생성용)
+    /// </summary>
+    public TimelineHandle GetTimelineHandle()
+    {
+        ThrowIfDisposed();
+        ThrowIfNoTimeline();
+
+        return _timeline!;
     }
 
     /// <summary>
@@ -193,6 +217,20 @@ public class TimelineService : IDisposable
         ThrowIfNoTimeline();
 
         int result = NativeMethods.timeline_get_audio_track_count(_timeline!.DangerousGetHandle(), out nuint count);
+        CheckError(result);
+
+        return (int)count;
+    }
+
+    /// <summary>
+    /// 특정 비디오 트랙의 클립 개수
+    /// </summary>
+    public int GetVideoClipCount(ulong trackId)
+    {
+        ThrowIfDisposed();
+        ThrowIfNoTimeline();
+
+        int result = NativeMethods.timeline_get_video_clip_count(_timeline!.DangerousGetHandle(), trackId, out nuint count);
         CheckError(result);
 
         return (int)count;

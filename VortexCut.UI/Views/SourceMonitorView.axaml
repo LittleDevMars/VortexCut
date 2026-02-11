@@ -1,0 +1,61 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="300"
+             x:Class="VortexCut.UI.Views.SourceMonitorView">
+    
+    <Grid RowDefinitions="Auto, *, Auto">
+        <Border Classes="PanelHeader">
+            <TextBlock Classes="PanelTitle" Text="CLIP MONITOR"/>
+        </Border>
+
+        <!-- Preview -->
+        <Grid Grid.Row="1" Background="Black">
+            <TextBlock Text="No Clip Selected" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+            <!-- Proxy Indicator Badge -->
+            <Border Background="{StaticResource WarningBrush}"
+                    CornerRadius="3"
+                    Padding="8,4"
+                    Margin="12"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    IsVisible="False"
+                    ToolTip.Tip="Playing with proxy (low resolution)">
+                <TextBlock Text="PROXY"
+                          Foreground="Black"
+                          FontSize="10"
+                          FontWeight="Bold"/>
+            </Border>
+        </Grid>
+
+        <!-- Controls -->
+        <Border Grid.Row="2" Background="{StaticResource BgHeaderBrush}" Padding="8" BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}">
+            <Grid ColumnDefinitions="Auto, *, Auto">
+                <Border Background="{StaticResource BgDarkBrush}" CornerRadius="3" Padding="10,4">
+                    <TextBlock FontFamily="Consolas, Courier New, monospace"
+                              FontSize="12"
+                              Foreground="{StaticResource AccentBrush}"
+                              VerticalAlignment="Center">
+                        <Run Text="--:--:--:--"/>
+                    </TextBlock>
+                </Border>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="4">
+                    <Button Classes="ToolButton" ToolTip.Tip="Mark In (I)" Width="32" Height="28">
+                        <TextBlock Text="I" Foreground="{StaticResource SuccessBrush}" FontWeight="Bold" FontSize="13" FontFamily="Consolas"/>
+                    </Button>
+                    <Button Classes="ToolButton" ToolTip.Tip="Play Clip" Width="32" Height="28">
+                        <PathIcon Data="{StaticResource IconPlay}" Width="12" Height="12" Foreground="{StaticResource TextPrimaryBrush}"/>
+                    </Button>
+                    <Button Classes="ToolButton" ToolTip.Tip="Mark Out (O)" Width="32" Height="28">
+                        <TextBlock Text="O" Foreground="{StaticResource ErrorBrush}" FontWeight="Bold" FontSize="13" FontFamily="Consolas"/>
+                    </Button>
+                </StackPanel>
+                <Button Grid.Column="2" Classes="ToolButton" ToolTip.Tip="Add to Timeline" Width="32" Height="28">
+                    <PathIcon Data="{StaticResource IconPlus}" Width="12" Height="12" Foreground="{StaticResource AccentBrush}"/>
+                </Button>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

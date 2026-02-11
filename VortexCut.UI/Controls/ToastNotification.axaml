@@ -1,0 +1,92 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="VortexCut.UI.Controls.ToastNotification"
+             Width="350">
+
+    <UserControl.Styles>
+        <Style Selector="Border.toast">
+            <Setter Property="Background" Value="#2D2D30"/>
+            <Setter Property="BorderBrush" Value="#3E3E42"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="16,12"/>
+            <Setter Property="BoxShadow" Value="0 4 16 #40000000"/>
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.3"/>
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.3"/>
+                </Transitions>
+            </Setter>
+        </Style>
+
+        <Style Selector="Border.toast.success">
+            <Setter Property="BorderBrush" Value="#4EC9B0"/>
+        </Style>
+
+        <Style Selector="Border.toast.error">
+            <Setter Property="BorderBrush" Value="#F48771"/>
+        </Style>
+
+        <Style Selector="Border.toast.warning">
+            <Setter Property="BorderBrush" Value="#D7BA7D"/>
+        </Style>
+
+        <Style Selector="Border.toast.info">
+            <Setter Property="BorderBrush" Value="#007ACC"/>
+        </Style>
+
+        <Style Selector="TextBlock.toast-title">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#E1E1E1"/>
+        </Style>
+
+        <Style Selector="TextBlock.toast-message">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="#CCCCCC"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,4,0,0"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Border Name="ToastBorder" Classes="toast">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+            <!-- Icon -->
+            <Border Grid.Column="0"
+                    Width="24" Height="24"
+                    CornerRadius="12"
+                    Background="#3E3E42"
+                    VerticalAlignment="Top"
+                    Margin="0,0,12,0">
+                <TextBlock Name="IconText"
+                           Text="ℹ️"
+                           FontSize="14"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"/>
+            </Border>
+
+            <!-- Content -->
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <TextBlock Name="TitleText" Classes="toast-title"/>
+                <TextBlock Name="MessageText" Classes="toast-message"/>
+            </StackPanel>
+
+            <!-- Close Button -->
+            <Button Grid.Column="2"
+                    Name="CloseButton"
+                    Width="24" Height="24"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    VerticalAlignment="Top"
+                    Margin="8,0,0,0"
+                    Padding="0"
+                    Cursor="Hand">
+                <TextBlock Text="✕"
+                           FontSize="14"
+                           Foreground="#858585"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"/>
+            </Button>
+        </Grid>
+    </Border>
+</UserControl>

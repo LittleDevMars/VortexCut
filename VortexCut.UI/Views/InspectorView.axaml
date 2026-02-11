@@ -1,0 +1,109 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="600"
+             x:Class="VortexCut.UI.Views.InspectorView">
+
+    <Grid RowDefinitions="Auto, *">
+        <Border Classes="PanelHeader">
+            <TextBlock Classes="PanelTitle" Text="INSPECTOR"/>
+        </Border>
+
+        <TabControl Grid.Row="1" Background="{StaticResource BgPanelBrush}">
+            <!-- Properties Tab -->
+            <TabItem Header="Properties">
+                <ScrollViewer>
+                    <StackPanel Margin="12" Spacing="12">
+                        <TextBlock Text="Transform" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12"/>
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Position" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                            <Grid ColumnDefinitions="*, 8, *">
+                                <TextBox Text="0" Watermark="X"/>
+                                <TextBox Grid.Column="2" Text="0" Watermark="Y"/>
+                            </Grid>
+                        </StackPanel>
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Scale" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                            <TextBox Text="100%" Watermark="Scale"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Rotation" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                            <TextBox Text="0°" Watermark="Rotation"/>
+                        </StackPanel>
+
+                        <Separator Background="{StaticResource BorderBrush}" Height="1" Margin="0,8"/>
+
+                        <TextBlock Text="Effect Stack" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12"/>
+                        <ListBox Background="Transparent" BorderThickness="0">
+                            <ListBoxItem Content="Color Correction"/>
+                            <ListBoxItem Content="Transform"/>
+                        </ListBox>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- Audio Mixer Tab -->
+            <TabItem Header="Audio">
+                <ScrollViewer>
+                    <StackPanel Margin="12" Spacing="12">
+                        <TextBlock Text="Audio Mixer" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12"/>
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Master Volume" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                            <Slider Minimum="0" Maximum="100" Value="100"/>
+                            <TextBlock Text="100%" HorizontalAlignment="Right" Foreground="{StaticResource TextPrimaryBrush}" FontSize="11"/>
+                        </StackPanel>
+
+                        <Separator Background="{StaticResource BorderBrush}" Height="1" Margin="0,8"/>
+
+                        <TextBlock Text="Track Levels" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12"/>
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="A1 - Audio Track 1" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                            <Slider Minimum="0" Maximum="100" Value="80"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="A2 - Audio Track 2" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                            <Slider Minimum="0" Maximum="100" Value="60"/>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- Color Grade Tab -->
+            <TabItem Header="Color">
+                <ScrollViewer>
+                    <StackPanel Margin="12" Spacing="12">
+                        <TextBlock Text="Color Grading" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12"/>
+
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Exposure" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                            <Slider Minimum="-100" Maximum="100" Value="0"/>
+                        </StackPanel>
+
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Contrast" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                            <Slider Minimum="-100" Maximum="100" Value="0"/>
+                        </StackPanel>
+
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Saturation" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                            <Slider Minimum="-100" Maximum="100" Value="0"/>
+                        </StackPanel>
+
+                        <Separator Background="{StaticResource BorderBrush}" Height="1" Margin="0,8"/>
+
+                        <TextBlock Text="Temperature" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12"/>
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Temperature" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                            <Slider Minimum="-100" Maximum="100" Value="0"/>
+                        </StackPanel>
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Tint" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                            <Slider Minimum="-100" Maximum="100" Value="0"/>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</UserControl>

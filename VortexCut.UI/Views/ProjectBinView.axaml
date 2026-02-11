@@ -7,43 +7,44 @@
              x:Class="VortexCut.UI.Views.ProjectBinView"
              x:DataType="vm:ProjectBinViewModel">
 
-    <DockPanel>
-        <!-- Header -->
-        <Border DockPanel.Dock="Top" Background="#2D2D30" Padding="10,5">
-            <TextBlock Text="Project Bin"
-                       Foreground="White"
-                       FontSize="14"
-                       FontWeight="Bold"/>
-        </Border>
-
+    <Grid>
         <!-- Media List -->
         <ListBox x:Name="MediaListBox"
                  ItemsSource="{Binding MediaItems}"
                  SelectedItem="{Binding SelectedItem}"
-                 Background="#1E1E1E">
+                 Background="{StaticResource BgPanelBrush}"
+                 BorderThickness="0">
             <ListBox.ItemTemplate>
                 <DataTemplate>
-                    <Border Padding="5" Margin="2">
+                    <Border Padding="5" Margin="0,1" CornerRadius="2" Background="Transparent">
                         <StackPanel Orientation="Horizontal" Spacing="10">
-                            <!-- Thumbnail Placeholder -->
-                            <Border Width="80" Height="45" Background="#3E3E42">
-                                <TextBlock Text="📹"
-                                           FontSize="24"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center"/>
+                            <!-- Thumbnail -->
+                            <Border Width="80" Height="45" Background="{StaticResource BgHeaderBrush}" CornerRadius="2" ClipToBounds="True">
+                                <Panel>
+                                    <!-- 썸네일 이미지 (ThumbnailPath가 있으면 표시) -->
+                                    <Image Source="{Binding ThumbnailPath}"
+                                           Stretch="UniformToFill"
+                                           IsVisible="{Binding ThumbnailPath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                    <!-- 플레이스홀더 (썸네일이 없으면 표시) -->
+                                    <TextBlock Text="📹"
+                                               FontSize="20"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               IsVisible="{Binding ThumbnailPath, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
+                                </Panel>
                             </Border>
 
                             <!-- Info -->
                             <StackPanel VerticalAlignment="Center">
                                 <TextBlock Text="{Binding Name}"
-                                           Foreground="White"
+                                           Foreground="{StaticResource TextBrightBrush}"
                                            FontWeight="SemiBold"/>
                                 <TextBlock Text="{Binding FilePath}"
-                                           Foreground="Gray"
-                                           FontSize="10"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           FontSize="11"
                                            TextTrimming="CharacterEllipsis"
-                                           MaxWidth="150"/>
-                                <TextBlock Foreground="LightGray" FontSize="10">
+                                           MaxWidth="180"/>
+                                <TextBlock Foreground="{StaticResource TextDisabledBrush}" FontSize="10">
                                     <Run Text="{Binding Width}"/>x<Run Text="{Binding Height}"/>
                                     <Run Text=" "/>
                                     <Run Text="{Binding DurationMs}"/>ms
@@ -54,5 +55,85 @@
                 </DataTemplate>
             </ListBox.ItemTemplate>
         </ListBox>
-    </DockPanel>
+
+        <!-- Empty State (MediaItems가 비어있고 로딩 중이 아닐 때) -->
+        <Border x:Name="EmptyState"
+                Background="{StaticResource BgPanelBrush}"
+                IsVisible="{Binding IsEmpty}">
+            <StackPanel HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="16">
+                <!-- Icon -->
+                <Border Width="80" Height="80"
+                        Background="{StaticResource BgHeaderBrush}"
+                        CornerRadius="40"
+                        HorizontalAlignment="Center">
+                    <TextBlock Text="📁"
+                               FontSize="40"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"/>
+                </Border>
+
+                <!-- Message -->
+                <StackPanel Spacing="8" HorizontalAlignment="Center">
+                    <TextBlock Text="No Media Files"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource TextBrightBrush}"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock FontSize="12"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center">
+                        <Run Text="여기로 파일을 드래그하거나"/>
+                        <LineBreak/>
+                        <Run Text="Ctrl+I" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"/>
+                        <Run Text="를 눌러 미디어를 가져오세요"/>
+                    </TextBlock>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Loading State (미디어 임포트 중) -->
+        <Border x:Name="LoadingState"
+                Background="{StaticResource BgPanelBrush}"
+                IsVisible="{Binding IsLoading}">
+            <StackPanel Spacing="12" Margin="12">
+                <!-- Skeleton Item 1 -->
+                <Border Padding="5" CornerRadius="2" Background="Transparent">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Border Width="80" Height="45" Background="{StaticResource BgHeaderBrush}" CornerRadius="2">
+                            <TextBlock Text="⏳"
+                                       FontSize="20"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       Foreground="{StaticResource TextDisabledBrush}"/>
+                        </Border>
+                        <StackPanel VerticalAlignment="Center" Spacing="4">
+                            <Border Width="150" Height="12" Background="{StaticResource BgHeaderBrush}" CornerRadius="2"/>
+                            <Border Width="120" Height="10" Background="{StaticResource BgBaseBrush}" CornerRadius="2"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Skeleton Item 2 -->
+                <Border Padding="5" CornerRadius="2" Background="Transparent" Opacity="0.7">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Border Width="80" Height="45" Background="{StaticResource BgHeaderBrush}" CornerRadius="2"/>
+                        <StackPanel VerticalAlignment="Center" Spacing="4">
+                            <Border Width="140" Height="12" Background="{StaticResource BgHeaderBrush}" CornerRadius="2"/>
+                            <Border Width="100" Height="10" Background="{StaticResource BgBaseBrush}" CornerRadius="2"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Loading Text -->
+                <TextBlock Text="Importing media..."
+                           FontSize="12"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           HorizontalAlignment="Center"
+                           Margin="0,12,0,0"/>
+            </StackPanel>
+        </Border>
+    </Grid>
 </UserControl>

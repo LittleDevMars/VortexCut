@@ -1,0 +1,73 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:VortexCut.UI.ViewModels"
+             xmlns:controls="clr-namespace:VortexCut.UI.Controls"
+             xmlns:timeline="clr-namespace:VortexCut.UI.Controls.Timeline"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="300"
+             x:Class="VortexCut.UI.Views.TimelinePanelView"
+             x:DataType="vm:MainViewModel">
+
+    <Grid RowDefinitions="Auto, Auto, *">
+        <Border Classes="PanelHeader" Grid.Row="0">
+            <Grid ColumnDefinitions="Auto, *, Auto">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Classes="PanelTitle" Text="TIMELINE" Margin="0,0,12,0"/>
+
+                    <!-- Tool Buttons -->
+                    <Border Background="{StaticResource BgDarkBrush}" CornerRadius="3" Padding="4,2">
+                        <StackPanel Orientation="Horizontal" Spacing="2">
+                            <Button Classes="ToolButton" ToolTip.Tip="Razor Tool (C)" Padding="6,3">
+                                <PathIcon Data="{StaticResource IconRazor}" Width="14" Height="14" Foreground="{StaticResource TextPrimaryBrush}"/>
+                            </Button>
+                            <Button Classes="ToolButton" ToolTip.Tip="Snap (S)" Padding="6,3">
+                                <PathIcon Data="{StaticResource IconSnap}" Width="14" Height="14" Foreground="{StaticResource TextPrimaryBrush}"/>
+                            </Button>
+                            <Border Width="1" Background="{StaticResource BorderBrush}" Margin="4,0"/>
+                            <Button Classes="ToolButton" ToolTip.Tip="Add Marker (M)" Padding="6,3">
+                                <PathIcon Data="{StaticResource IconPlus}" Width="12" Height="12" Foreground="{StaticResource TextPrimaryBrush}"/>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Zoom Level Indicator -->
+                    <Border Background="{StaticResource BgDarkBrush}" CornerRadius="3" Padding="8,3">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <PathIcon Data="{StaticResource IconSearch}" Width="12" Height="12" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                            <TextBlock Text="100%" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- Timeline Stats -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12">
+                    <Border Background="{StaticResource BgDarkBrush}" CornerRadius="3" Padding="8,3">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <TextBlock Text="Clips:" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                            <TextBlock Text="{Binding Timeline.Clips.Count}" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="11"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Background="{StaticResource BgDarkBrush}" CornerRadius="3" Padding="8,3">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <TextBlock Text="FPS:" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                            <TextBlock Text="30" Foreground="{StaticResource TextPrimaryBrush}" FontWeight="SemiBold" FontSize="11"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Background Render Bar -->
+        <Border Grid.Row="1" Background="{StaticResource BgDarkBrush}" BorderThickness="0,0,0,1" BorderBrush="{StaticResource BorderBrush}" Height="4">
+            <Grid>
+                <!-- Render Status Segments (샘플 데이터) -->
+                <Border Width="200" HorizontalAlignment="Left" Background="{StaticResource SuccessBrush}" ToolTip.Tip="Rendered"/>
+                <Border Width="150" HorizontalAlignment="Left" Margin="200,0,0,0" Background="{StaticResource ErrorBrush}" ToolTip.Tip="Needs Rendering"/>
+            </Grid>
+        </Border>
+
+        <!-- TimelineCanvas (내부에 트랙헤더, 스크롤 포함) -->
+        <controls:TimelineCanvas x:Name="TimelineCanvas" Grid.Row="2" Background="{StaticResource BgPanelBrush}"/>
+    </Grid>
+</UserControl>

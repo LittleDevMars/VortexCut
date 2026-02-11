@@ -16,12 +16,21 @@ public partial class ProjectBinViewModel : ViewModelBase
     [ObservableProperty]
     private MediaItem? _selectedItem;
 
+    [ObservableProperty]
+    private bool _isLoading = false;
+
+    /// <summary>
+    /// 빈 상태 여부 (Empty State 표시용)
+    /// </summary>
+    public bool IsEmpty => MediaItems.Count == 0 && !IsLoading;
+
     /// <summary>
     /// 미디어 아이템 추가
     /// </summary>
     public void AddMediaItem(MediaItem item)
     {
         MediaItems.Add(item);
+        OnPropertyChanged(nameof(IsEmpty));
     }
 
     /// <summary>
@@ -44,5 +53,15 @@ public partial class ProjectBinViewModel : ViewModelBase
     {
         MediaItems.Clear();
         SelectedItem = null;
+        OnPropertyChanged(nameof(IsEmpty));
+    }
+
+    /// <summary>
+    /// 로딩 상태 설정 (미디어 임포트 시작/종료)
+    /// </summary>
+    public void SetLoading(bool loading)
+    {
+        IsLoading = loading;
+        OnPropertyChanged(nameof(IsEmpty));
     }
 }

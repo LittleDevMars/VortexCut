@@ -1,15 +1,16 @@
 using System.Runtime.InteropServices;
 using VortexCut.Interop;
+using VortexCut.Tests.Helpers;
 using Xunit;
 
 namespace VortexCut.Tests.Interop;
 
 /// <summary>
-/// Rust FFI 기본 테스트
+/// Rust FFI 기본 테스트 (네이티브 DLL 필요)
 /// </summary>
 public class NativeMethodsTests
 {
-    [Fact]
+    [FactRequiresNativeDll]
     public void HelloWorld_ReturnsMessage()
     {
         // Arrange & Act
@@ -26,7 +27,7 @@ public class NativeMethodsTests
         NativeMethods.string_free(messagePtr);
     }
 
-    [Fact]
+    [FactRequiresNativeDll]
     public void AddNumbers_ReturnsCorrectSum()
     {
         // Arrange
@@ -40,7 +41,7 @@ public class NativeMethodsTests
         Assert.Equal(30, result);
     }
 
-    [Theory]
+    [TheoryRequiresNativeDll]
     [InlineData(5, 3, 8)]
     [InlineData(-5, 3, -2)]
     [InlineData(0, 0, 0)]

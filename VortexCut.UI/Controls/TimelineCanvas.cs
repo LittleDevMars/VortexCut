@@ -20,6 +20,11 @@ public class TimelineCanvas : Grid
     private double _pixelsPerMs = 0.1;
     private double _scrollOffsetX = 0;
 
+    // 이벤트 핸들러 저장 (구독 해제용)
+    private System.Collections.Specialized.NotifyCollectionChangedEventHandler? _videoTracksChangedHandler;
+    private System.Collections.Specialized.NotifyCollectionChangedEventHandler? _audioTracksChangedHandler;
+    private System.Collections.Specialized.NotifyCollectionChangedEventHandler? _clipsChangedHandler;
+
     /// <summary>
     /// ViewModel 참조
     /// </summary>
@@ -28,18 +33,35 @@ public class TimelineCanvas : Grid
         get => _viewModel;
         set
         {
+            // 이전 ViewModel 구독 해제 (메모리 누수 방지)
+            if (_viewModel != null)
+            {
+                if (_videoTracksChangedHandler != null)
+                    _viewModel.VideoTracks.CollectionChanged -= _videoTracksChangedHandler;
+                if (_audioTracksChangedHandler != null)
+                    _viewModel.AudioTracks.CollectionChanged -= _audioTracksChangedHandler;
+                if (_clipsChangedHandler != null)
+                    _viewModel.Clips.CollectionChanged -= _clipsChangedHandler;
+            }
+
             _viewModel = value;
+
             if (_viewModel != null)
             {
                 _minimap.SetViewModel(_viewModel);
                 _timelineHeader.SetViewModel(_viewModel);
                 _clipCanvasPanel.SetViewModel(_viewModel);
                 _trackListPanel.SetTracks(_viewModel.VideoTracks, _viewModel.AudioTracks);
+                _clipCanvasPanel.SetTracks(_viewModel.VideoTracks.ToList(), _viewModel.AudioTracks.ToList()); // CRITICAL: 트랙 초기 설정!
 
-                // 트랙/클립 변경 감지
-                _viewModel.VideoTracks.CollectionChanged += (s, e) => UpdateTracks();
-                _viewModel.AudioTracks.CollectionChanged += (s, e) => UpdateTracks();
-                _viewModel.Clips.CollectionChanged += (s, e) => UpdateClips();
+                // 트랙/클립 변경 감지 (핸들러 저장)
+                _videoTracksChangedHandler = (s, e) => UpdateTracks();
+                _audioTracksChangedHandler = (s, e) => UpdateTracks();
+                _clipsChangedHandler = (s, e) => UpdateClips();
+
+                _viewModel.VideoTracks.CollectionChanged += _videoTracksChangedHandler;
+                _viewModel.AudioTracks.CollectionChanged += _audioTracksChangedHandler;
+                _viewModel.Clips.CollectionChanged += _clipsChangedHandler;
             }
         }
     }
@@ -95,7 +117,7 @@ public class TimelineCanvas : Grid
     /// </summary>
     public void SetZoom(double pixelsPerMs)
     {
-        _pixelsPerMs = Math.Clamp(pixelsPerMs, 0.01, 1.0);
+        _pixelsPerMs = Math.Clamp(pixelsPerMs, 0.01, 5.0); // 최대 500%까지 확대
         _timelineHeader.SetZoom(_pixelsPerMs);
         _clipCanvasPanel.SetZoom(_pixelsPerMs);
     }
@@ -129,9 +151,15 @@ public class TimelineCanvas : Grid
     /// </summary>
     private void UpdateClips()
     {
-        if (_viewModel == null) return;
+        if (_viewModel == null)
+        {
+            System.Diagnostics.Debug.WriteLine("⚠️ TimelineCanvas.UpdateClips: _viewModel is null!");
+            return;
+        }
 
+        System.Diagnostics.Debug.WriteLine($"🔄 TimelineCanvas.UpdateClips called! Clips.Count = {_viewModel.Clips.Count}");
         _clipCanvasPanel.SetClips(_viewModel.Clips);
+        System.Diagnostics.Debug.WriteLine($"   ✅ ClipCanvasPanel.SetClips executed");
     }
 
 }

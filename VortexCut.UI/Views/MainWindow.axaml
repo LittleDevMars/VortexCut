@@ -12,298 +12,168 @@
         Title="VortexCut - Professional Video Editor"
         Width="1600" Height="900"
         MinWidth="1024" MinHeight="600"
-        Background="#1E1E20"
-        Foreground="#FFFFFF">
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BgBaseBrush}">
 
-    <Window.Styles>
-        <Style Selector="Window">
-            <Setter Property="Background">
-                <Setter.Value>
-                    <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
-                        <GradientStop Color="#252527" Offset="0"/>
-                        <GradientStop Color="#1E1E20" Offset="0.5"/>
-                        <GradientStop Color="#181A18" Offset="1"/>
-                    </LinearGradientBrush>
-                </Setter.Value>
-            </Setter>
-        </Style>
-    </Window.Styles>
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Space" Command="{Binding PlayPauseCommand}"/>
+    </Window.KeyBindings>
 
-    <DockPanel LastChildFill="True">
-        <!-- Menu Bar -->
-        <Menu DockPanel.Dock="Top" Background="#2D2D30">
-            <MenuItem Header="파일">
-                <MenuItem Header="새 프로젝트" Command="{Binding CreateNewProjectCommand}" />
-                <MenuItem Header="비디오 가져오기" Command="{Binding OpenVideoFileCommand}" />
-                <MenuItem Header="저장" />
-                <Separator />
-                <MenuItem Header="내보내기" />
-                <Separator />
-                <MenuItem Header="종료" />
-            </MenuItem>
-            <MenuItem Header="편집">
-                <MenuItem Header="실행 취소 (Ctrl+Z)" />
-                <MenuItem Header="다시 실행 (Ctrl+Y)" />
-                <Separator />
-                <MenuItem Header="분할 (S)" />
-                <MenuItem Header="삭제 (Del)" />
-            </MenuItem>
-            <MenuItem Header="보기">
-                <MenuItem Header="Project Bin" />
-                <MenuItem Header="타임라인" />
-                <MenuItem Header="Effects" />
-            </MenuItem>
-        </Menu>
+    <Grid RowDefinitions="Auto, *, Auto">
+        <!-- Custom TitleBar / Menu -->
+        <Border Grid.Row="0" Background="{StaticResource BgHeaderBrush}" BorderThickness="0,0,0,1" BorderBrush="{StaticResource BorderBrush}">
+        <Grid ColumnDefinitions="Auto, *, Auto, Auto" Height="38">
+            <StackPanel Orientation="Horizontal" Spacing="12" Margin="12,0">
+                <!-- App Logo/Title -->
+                <Border Background="{StaticResource AccentBrush}" CornerRadius="4" Padding="8,4" VerticalAlignment="Center">
+                    <TextBlock Text="VortexCut" FontWeight="Bold" Foreground="{StaticResource TextBrightBrush}" FontSize="12"/>
+                </Border>
 
-        <!-- Main Content -->
-        <Grid>
+                <Menu Background="Transparent" BorderThickness="0" VerticalAlignment="Center">
+                    <MenuItem Header="File">
+                        <MenuItem Header="New Project" Command="{Binding CreateNewProjectCommand}" InputGesture="Ctrl+N"/>
+                        <MenuItem Header="Open Project..." Command="{Binding LoadProjectCommand}" InputGesture="Ctrl+O"/>
+                        <MenuItem Header="Import Media..." Command="{Binding OpenVideoFileCommand}" InputGesture="Ctrl+I"/>
+                        <Separator/>
+                        <MenuItem Header="Save Project" Command="{Binding SaveProjectCommand}" InputGesture="Ctrl+S"/>
+                        <MenuItem Header="Save Project As..." Command="{Binding SaveProjectAsCommand}" InputGesture="Ctrl+Shift+S"/>
+                        <Separator/>
+                        <MenuItem Header="Export..." InputGesture="Ctrl+M"/>
+                        <Separator/>
+                        <MenuItem Header="Exit" InputGesture="Alt+F4"/>
+                    </MenuItem>
+                    <MenuItem Header="Edit">
+                        <MenuItem Header="Undo" InputGesture="Ctrl+Z"/>
+                        <MenuItem Header="Redo" InputGesture="Ctrl+Y"/>
+                        <Separator/>
+                        <MenuItem Header="Cut" InputGesture="Ctrl+X"/>
+                        <MenuItem Header="Copy" InputGesture="Ctrl+C"/>
+                        <MenuItem Header="Paste" InputGesture="Ctrl+V"/>
+                        <MenuItem Header="Delete" InputGesture="Delete"/>
+                    </MenuItem>
+                    <MenuItem Header="View">
+                        <MenuItem Header="Zoom In" InputGesture="Ctrl+Add"/>
+                        <MenuItem Header="Zoom Out" InputGesture="Ctrl+Subtract"/>
+                        <MenuItem Header="Fit to Window" InputGesture="Ctrl+D0"/>
+                        <Separator/>
+                        <MenuItem Header="Show Timeline" InputGesture="T"/>
+                        <MenuItem Header="Show Inspector" InputGesture="I"/>
+                    </MenuItem>
+                    <MenuItem Header="Help">
+                        <MenuItem Header="Documentation"/>
+                        <MenuItem Header="Keyboard Shortcuts"/>
+                        <Separator/>
+                        <MenuItem Header="About VortexCut"/>
+                    </MenuItem>
+                </Menu>
+            </StackPanel>
+
+            <!-- Workspace Switcher -->
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="0" VerticalAlignment="Center">
+                <Border Background="{StaticResource BgDarkBrush}" CornerRadius="4" Padding="2">
+                    <StackPanel Orientation="Horizontal" Spacing="0">
+                        <Button Classes="ToolButton" Content="Editing" Padding="12,6" CornerRadius="3" Background="{StaticResource AccentBrush}" Foreground="{StaticResource TextBrightBrush}" FontSize="11" FontWeight="SemiBold"/>
+                        <Button Classes="ToolButton" Content="Color" Padding="12,6" CornerRadius="3" FontSize="11"/>
+                        <Button Classes="ToolButton" Content="Audio" Padding="12,6" CornerRadius="3" FontSize="11"/>
+                        <Button Classes="ToolButton" Content="Effects" Padding="12,6" CornerRadius="3" FontSize="11"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <!-- Status / Project Info -->
+            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" Margin="12,0">
+                <PathIcon Data="{StaticResource IconFolder}" Width="14" Height="14" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                <TextBlock Text="{Binding ProjectName}" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold"/>
+            </StackPanel>
+        </Grid>
+        </Border>
+
+        <!-- Main Workspace -->
+        <Grid Grid.Row="1">
             <Grid.RowDefinitions>
-                <!-- Top: Project Bin + Monitors + Effects -->
-                <RowDefinition Height="2*" />
-                <RowDefinition Height="5" />
-                <!-- Bottom: Timeline -->
-                <RowDefinition Height="*" />
+                <RowDefinition Height="*" MinHeight="300" />
+                <RowDefinition Height="2" />
+                <RowDefinition Height="*" MinHeight="250" />
             </Grid.RowDefinitions>
 
-            <!-- Top Area -->
+            <!-- Upper Pane -->
             <Grid Grid.Row="0">
                 <Grid.ColumnDefinitions>
-                    <!-- Project Bin -->
-                    <ColumnDefinition Width="300" MinWidth="200" />
-                    <ColumnDefinition Width="5" />
-                    <!-- Monitors (Clip + Project) -->
-                    <ColumnDefinition Width="3*" MinWidth="400" />
-                    <ColumnDefinition Width="5" />
-                    <!-- Effects/Properties -->
-                    <ColumnDefinition Width="300" MinWidth="200" />
+                    <ColumnDefinition Width="300" MinWidth="200"/>
+                    <ColumnDefinition Width="2"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="2"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="2"/>
+                    <ColumnDefinition Width="300" MinWidth="200"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Project Bin -->
-                <views:ProjectBinView Grid.Column="0"
-                                      DataContext="{Binding ProjectBin}" />
-
-                <GridSplitter Grid.Column="1" Background="#444" ResizeDirection="Columns" />
-
-                <!-- Dual Monitors Area -->
-                <Grid Grid.Column="2">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="5" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-
-                    <!-- Clip Monitor -->
-                    <Border Grid.Column="0" Background="#1E1E1E">
-                        <DockPanel>
-                            <!-- Header -->
-                            <Border DockPanel.Dock="Top" Background="#2D2D30" Padding="10,5">
-                                <TextBlock Text="Clip Monitor"
-                                           Foreground="White"
-                                           FontSize="14"
-                                           FontWeight="Bold"/>
-                            </Border>
-
-                            <!-- Preview -->
-                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <Border Background="Black" Margin="10">
-                                    <Image Width="400" Height="225"
-                                           Stretch="Uniform" />
-                                </Border>
-                            </StackPanel>
-                        </DockPanel>
+                <!-- 1. Project Bin -->
+                <Grid Grid.Column="0" RowDefinitions="Auto, *">
+                    <Border Classes="PanelHeader">
+                        <TextBlock Classes="PanelTitle" Text="PROJECT BIN"/>
                     </Border>
-
-                    <GridSplitter Grid.Column="1" Background="#444" ResizeDirection="Columns" />
-
-                    <!-- Project Monitor -->
-                    <Border Grid.Column="2" Background="#1E1E1E">
-                        <DockPanel>
-                            <!-- Header -->
-                            <Border DockPanel.Dock="Top" Background="#2D2D30" Padding="10,5">
-                                <TextBlock Text="Project Monitor"
-                                           Foreground="White"
-                                           FontSize="14"
-                                           FontWeight="Bold"/>
-                            </Border>
-
-                            <!-- Preview -->
-                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <Border Background="Black" Margin="10">
-                                    <Image Source="{Binding Preview.PreviewImage}"
-                                           Width="400" Height="225"
-                                           Stretch="Uniform" />
-                                </Border>
-
-                                <!-- Playback Controls -->
-                                <StackPanel Orientation="Horizontal"
-                                            HorizontalAlignment="Center"
-                                            Margin="0,10,0,0">
-                                    <Button Content="⏮" Width="40" Margin="2" />
-                                    <Button Content="⏪" Width="40" Margin="2" />
-                                    <Button Content="▶" Width="40" Margin="2"
-                                            Command="{Binding PlayPauseCommand}" />
-                                    <Button Content="⏩" Width="40" Margin="2" />
-                                    <Button Content="⏭" Width="40" Margin="2" />
-                                    <Button Content="⏹" Width="40" Margin="2" />
-                                </StackPanel>
-
-                                <!-- Timecode -->
-                                <TextBlock Text="{Binding Preview.CurrentTimeMs, StringFormat='{}{0} ms'}"
-                                           Foreground="LightGray"
-                                           FontSize="14"
-                                           FontFamily="Consolas"
-                                           HorizontalAlignment="Center"
-                                           Margin="0,10,0,0"/>
-                            </StackPanel>
-                        </DockPanel>
-                    </Border>
+                    <views:ProjectBinView Grid.Row="1" DataContext="{Binding ProjectBin}" Background="{StaticResource BgPanelBrush}"/>
                 </Grid>
+                <GridSplitter Grid.Column="1" ResizeDirection="Columns" Background="{StaticResource BgBaseBrush}"/>
 
-                <GridSplitter Grid.Column="3" Background="#444" ResizeDirection="Columns" />
+                <!-- 2. Source Monitor -->
+                <views:SourceMonitorView Grid.Column="2"/>
+                
+                <GridSplitter Grid.Column="3" ResizeDirection="Columns" Background="{StaticResource BgBaseBrush}"/>
 
-                <!-- Effects/Properties Panel -->
-                <Border Grid.Column="4" Background="#252526">
-                    <DockPanel>
-                        <Border DockPanel.Dock="Top" Background="#2D2D30" Padding="10,5">
-                            <TextBlock Text="Properties / Effects"
-                                       Foreground="White"
-                                       FontSize="14"
-                                       FontWeight="Bold"/>
-                        </Border>
+                <!-- 3. Program Monitor -->
+                <views:ProgramMonitorView Grid.Column="4"/>
+                
+                <GridSplitter Grid.Column="5" ResizeDirection="Columns" Background="{StaticResource BgBaseBrush}"/>
 
-                        <ScrollViewer>
-                            <StackPanel Margin="10">
-                                <TextBlock Text="클립 속성"
-                                           Foreground="White"
-                                           FontSize="12"
-                                           FontWeight="SemiBold"
-                                           Margin="0,0,0,10"/>
-
-                                <TextBlock Text="선택된 클립 없음"
-                                           Foreground="Gray"
-                                           FontSize="11" />
-
-                                <Separator Margin="0,20,0,10" Background="#444" />
-
-                                <TextBlock Text="Effects"
-                                           Foreground="White"
-                                           FontSize="12"
-                                           FontWeight="SemiBold"
-                                           Margin="0,0,0,10"/>
-
-                                <ListBox Background="Transparent">
-                                    <ListBoxItem Content="Transform" />
-                                    <ListBoxItem Content="Color Correction" />
-                                    <ListBoxItem Content="Blur" />
-                                    <ListBoxItem Content="Fade In/Out" />
-                                </ListBox>
-                            </StackPanel>
-                        </ScrollViewer>
-                    </DockPanel>
-                </Border>
+                <!-- 4. Inspector -->
+                <views:InspectorView Grid.Column="6"/>
             </Grid>
 
-            <!-- Splitter -->
-            <GridSplitter Grid.Row="1" Background="#444" ResizeDirection="Rows" />
+            <GridSplitter Grid.Row="1" ResizeDirection="Rows" Background="{StaticResource BgBaseBrush}"/>
 
-            <!-- Timeline Area with Graph Editor -->
-            <Border Grid.Row="2" Background="#1E1E1E">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <!-- Timeline -->
-                        <RowDefinition Height="2*" MinHeight="200" />
-                        <RowDefinition Height="5" />
-                        <!-- Graph Editor -->
-                        <RowDefinition Height="*" MinHeight="150" />
-                    </Grid.RowDefinitions>
-
-                    <!-- Timeline -->
-                    <DockPanel Grid.Row="0">
-                        <!-- Timeline Toolbar -->
-                        <Border DockPanel.Dock="Top" Background="#2D2D30" Padding="5">
-                            <StackPanel Orientation="Horizontal" Spacing="10">
-                                <TextBlock Text="Timeline"
-                                           Foreground="White"
-                                           FontSize="14"
-                                           FontWeight="Bold"
-                                           VerticalAlignment="Center"
-                                           Margin="5,0"/>
-
-                                <Separator Width="1" Background="#555" />
-
-                                <Button Content="🔍+" Width="35" ToolTip.Tip="Zoom In" />
-                                <Button Content="🔍-" Width="35" ToolTip.Tip="Zoom Out" />
-
-                                <Separator Width="1" Background="#555" />
-
-                                <ToggleButton Content="🧲" Width="35" ToolTip.Tip="Snap" />
-                                <ToggleButton Content="✂" Width="35" ToolTip.Tip="Razor Tool" />
-
-                                <Separator Width="1" Background="#555" />
-
-                                <TextBlock Text="Clips:"
-                                           Foreground="LightGray"
-                                           VerticalAlignment="Center" />
-                                <TextBlock Text="{Binding Timeline.Clips.Count}"
-                                           Foreground="White"
-                                           VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Border>
-
-                        <!-- Timeline Canvas -->
-                        <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                                      VerticalScrollBarVisibility="Auto">
-                            <controls:TimelineCanvas x:Name="TimelineCanvas"
-                                                     Width="2000"
-                                                     Height="400" />
-                        </ScrollViewer>
-                    </DockPanel>
-
-                    <GridSplitter Grid.Row="1" Background="#444" ResizeDirection="Rows" />
-
-                    <!-- Graph Editor -->
-                    <Border Grid.Row="2" Background="#1E1E1E">
-                        <DockPanel>
-                            <!-- Graph Editor Toolbar -->
-                            <Border DockPanel.Dock="Top" Background="#2D2D30" Padding="5">
-                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <TextBlock Text="Graph Editor"
-                                               Foreground="White"
-                                               FontSize="14"
-                                               FontWeight="Bold"
-                                               VerticalAlignment="Center"
-                                               Margin="5,0"/>
-
-                                    <Separator Width="1" Background="#555" />
-
-                                    <ComboBox Width="120"
-                                              SelectedIndex="{Binding Timeline.SelectedKeyframeSystem, Mode=TwoWay}"
-                                              ToolTip.Tip="Keyframe System">
-                                        <ComboBoxItem Content="Opacity" />
-                                        <ComboBoxItem Content="Volume" />
-                                        <ComboBoxItem Content="Position X" />
-                                        <ComboBoxItem Content="Position Y" />
-                                        <ComboBoxItem Content="Scale" />
-                                        <ComboBoxItem Content="Rotation" />
-                                    </ComboBox>
-
-                                    <Separator Width="1" Background="#555" />
-
-                                    <Button Content="Smooth" Width="60" ToolTip.Tip="Smooth Keyframes" />
-                                    <Button Content="Linear" Width="60" ToolTip.Tip="Linearize Keyframes" />
-
-                                    <Separator Width="1" Background="#555" />
-
-                                    <Button Content="Fit" Width="50" ToolTip.Tip="Fit View" />
-                                </StackPanel>
-                            </Border>
-
-                            <!-- Graph Editor Canvas -->
-                            <timeline:GraphEditor x:Name="GraphEditor" />
-                        </DockPanel>
-                    </Border>
-                </Grid>
-            </Border>
+            <!-- Lower Pane: Timeline -->
+            <views:TimelinePanelView Grid.Row="2" DataContext="{Binding}"/>
         </Grid>
-    </DockPanel>
+
+        <!-- Status Bar -->
+        <Border Grid.Row="2" Background="{StaticResource BgHeaderBrush}" BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}">
+            <Grid ColumnDefinitions="Auto, *, Auto" Height="28" Margin="12,0">
+                <!-- Left: Status Message -->
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <TextBlock Text="●" Foreground="{StaticResource SuccessBrush}" VerticalAlignment="Center" FontSize="10"/>
+                    <TextBlock Text="Ready" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" FontSize="11"/>
+                </StackPanel>
+
+                <!-- Center: System Stats -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="GPU:" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" FontSize="11"/>
+                        <TextBlock Text="0%" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" FontSize="11" FontWeight="SemiBold"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="RAM:" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" FontSize="11"/>
+                        <TextBlock Text="0.0 GB" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" FontSize="11" FontWeight="SemiBold"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Right: Render Queue -->
+                <Button Grid.Column="2" Classes="ToolButton" Padding="8,4" ToolTip.Tip="Render Queue">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <PathIcon Data="{StaticResource IconFilm}" Width="12" Height="12" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                        <TextBlock Text="Render Queue" Foreground="{StaticResource TextPrimaryBrush}" FontSize="11" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </Grid>
+        </Border>
+
+        <!-- Toast Notification Container (우측 하단 오버레이) -->
+        <Grid x:Name="ToastContainer"
+              Grid.Row="0" Grid.RowSpan="3"
+              IsHitTestVisible="False"
+              ZIndex="1000">
+            <!-- ToastService에서 동적으로 Toast를 추가 -->
+        </Grid>
+    </Grid>
 </Window>
