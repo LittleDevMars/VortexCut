@@ -59,6 +59,53 @@
                 </ScrollViewer>
             </TabItem>
 
+            <!-- Subtitle Tab -->
+            <TabItem Header="Subtitle">
+                <ScrollViewer>
+                    <StackPanel Margin="12" Spacing="12">
+                        <!-- 자막 클립 선택 시 편집 UI -->
+                        <TextBlock Text="자막 편집" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12"/>
+
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="텍스트" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                            <TextBox AcceptsReturn="True"
+                                     MinHeight="80"
+                                     MaxHeight="200"
+                                     TextWrapping="Wrap"
+                                     Watermark="자막 텍스트를 입력하세요..."
+                                     FontSize="13"/>
+                        </StackPanel>
+
+                        <Separator Background="{StaticResource BorderBrush}" Height="1" Margin="0,4"/>
+
+                        <TextBlock Text="스타일" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12"/>
+
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="폰트 크기" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                            <Slider Minimum="12" Maximum="96" Value="48"/>
+                        </StackPanel>
+
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="위치" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                            <ComboBox SelectedIndex="2" HorizontalAlignment="Stretch">
+                                <ComboBoxItem Content="상단"/>
+                                <ComboBoxItem Content="중앙"/>
+                                <ComboBoxItem Content="하단"/>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <Separator Background="{StaticResource BorderBrush}" Height="1" Margin="0,4"/>
+
+                        <TextBlock Text="SRT 가져오기/내보내기" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12"/>
+
+                        <TextBlock Text="Ctrl+Shift+I로 SRT 파일을 가져올 수 있습니다."
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
             <!-- Color Grade Tab -->
             <TabItem Header="Color">
                 <ScrollViewer>

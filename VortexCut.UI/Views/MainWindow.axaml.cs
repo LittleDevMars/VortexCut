@@ -183,7 +183,13 @@ public partial class MainWindow : Window
 
             // In/Out 포인트 & Import
             case Key.I:
-                if (isCtrl)
+                if (isCtrl && isShift)
+                {
+                    // Ctrl+Shift+I: SRT 자막 임포트
+                    _ = _viewModel.ImportSrtFileCommand.ExecuteAsync(null);
+                    e.Handled = true;
+                }
+                else if (isCtrl)
                 {
                     // Ctrl+I: 미디어 임포트
                     _ = _viewModel.OpenVideoFileCommand.ExecuteAsync(null);
@@ -459,6 +465,7 @@ public partial class MainWindow : Window
         if (_viewModel == null) return;
 
         var exportVm = new ExportViewModel(_viewModel.ProjectService);
+        exportVm.SetTimelineViewModel(_viewModel.Timeline);
 
         var dialog = new ExportDialog
         {

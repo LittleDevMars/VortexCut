@@ -5,6 +5,7 @@
 use crate::encoding::encoder::VideoEncoder;
 use crate::encoding::audio_mixer::AudioMixer;
 use crate::rendering::Renderer;
+use crate::subtitle::overlay::{SubtitleOverlayList, blend_overlay_rgba, yuv420p_to_rgba, rgba_to_yuv420p};
 use crate::timeline::Timeline;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -34,6 +35,15 @@ pub struct ExportJob {
 impl ExportJob {
     /// Export 시작 (백그라운드 스레드에서 실행)
     pub fn start(timeline: Arc<Mutex<Timeline>>, config: ExportConfig) -> Self {
+        Self::start_with_subtitles(timeline, config, None)
+    }
+
+    /// Export 시작 (자막 포함)
+    pub fn start_with_subtitles(
+        timeline: Arc<Mutex<Timeline>>,
+        config: ExportConfig,
+        subtitles: Option<SubtitleOverlayList>,
+    ) -> Self {
         let progress = Arc::new(AtomicU32::new(0));
         let cancelled = Arc::new(AtomicBool::new(false));
         let finished = Arc::new(AtomicBool::new(false));
@@ -45,7 +55,7 @@ impl ExportJob {
         let e = error.clone();
 
         std::thread::spawn(move || {
-            let result = Self::export_thread(timeline, &config, &p, &c);
+            let result = Self::export_thread(timeline, &config, &p, &c, subtitles.as_ref());
             match result {
                 Ok(()) => {
                     p.store(100, Ordering::SeqCst);
@@ -122,6 +132,7 @@ impl ExportJob {
         config: &ExportConfig,
         progress: &AtomicU32,
         cancelled: &AtomicBool,
+        subtitles: Option<&SubtitleOverlayList>,
     ) -> Result<(), String> {
         eprintln!(
             "[EXPORT] 시작: {}x{} @ {}fps, CRF={}, 출력={}",
@@ -229,11 +240,30 @@ impl ExportJob {
                 );
             }
 
-            // 비디오 인코딩 (YUV420P 직접 전달 — 색공간 변환 손실 제거)
-            if frame.is_yuv {
-                encoder.encode_frame_yuv(&frame.data, frame.width, frame.height)?;
+            // 자막 오버레이 합성 (있을 때만 RGBA 경로)
+            let has_subtitle = subtitles
+                .and_then(|s| s.get_active(timestamp_ms))
+                .is_some();
+
+            if has_subtitle {
+                // 자막 프레임: YUV→RGBA 변환 → 알파 블렌딩 → RGBA 인코딩
+                let overlay = subtitles.unwrap().get_active(timestamp_ms).unwrap();
+                let mut rgba = if frame.is_yuv {
+                    yuv420p_to_rgba(&frame.data, frame.width, frame.height)
+                } else {
+                    frame.data.clone()
+                };
+                blend_overlay_rgba(&mut rgba, frame.width, frame.height, overlay);
+                // RGBA→YUV420P 변환 후 인코딩 (YUV 직접 경로 유지)
+                let yuv = rgba_to_yuv420p(&rgba, frame.width, frame.height);
+                encoder.encode_frame_yuv(&yuv, frame.width, frame.height)?;
             } else {
-                encoder.encode_frame(&frame.data, frame.width, frame.height)?;
+                // 자막 없는 프레임: 기존 직접 경로 (변환 손실 없음)
+                if frame.is_yuv {
+                    encoder.encode_frame_yuv(&frame.data, frame.width, frame.height)?;
+                } else {
+                    encoder.encode_frame(&frame.data, frame.width, frame.height)?;
+                }
             }
 
             // 오디오 믹싱 + 인코딩

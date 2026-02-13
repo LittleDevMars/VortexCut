@@ -4,12 +4,13 @@ using System.ComponentModel.DataAnnotations;
 namespace VortexCut.Core.Models;
 
 /// <summary>
-/// 트랙 타입 (비디오/오디오)
+/// 트랙 타입 (비디오/오디오/자막)
 /// </summary>
 public enum TrackType
 {
     Video,
-    Audio
+    Audio,
+    Subtitle
 }
 
 /// <summary>

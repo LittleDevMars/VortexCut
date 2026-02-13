@@ -48,6 +48,9 @@ public class ProjectData
     [JsonPropertyName("clips")]
     public List<ClipData> Clips { get; set; } = new();
 
+    [JsonPropertyName("subtitleTracks")]
+    public List<TrackData> SubtitleTracks { get; set; } = new();
+
     [JsonPropertyName("markers")]
     public List<MarkerData> Markers { get; set; } = new();
 }
@@ -149,6 +152,14 @@ public class ClipData
     [JsonPropertyName("linkedVideoClipId")]
     public ulong? LinkedVideoClipId { get; set; }
 
+    /// <summary>자막 클립 텍스트 (SubtitleClipModel일 때만)</summary>
+    [JsonPropertyName("subtitleText")]
+    public string? SubtitleText { get; set; }
+
+    /// <summary>자막 스타일 (SubtitleClipModel일 때만)</summary>
+    [JsonPropertyName("subtitleStyle")]
+    public SubtitleStyleData? SubtitleStyle { get; set; }
+
     [JsonPropertyName("opacityKeyframes")]
     public KeyframeSystemData OpacityKeyframes { get; set; } = new();
 
@@ -235,6 +246,39 @@ public class BezierHandleData
 
     [JsonPropertyName("valueOffset")]
     public double ValueOffset { get; set; }
+}
+
+/// <summary>
+/// 자막 스타일 DTO.
+/// </summary>
+public class SubtitleStyleData
+{
+    [JsonPropertyName("fontFamily")]
+    public string FontFamily { get; set; } = "Arial";
+
+    [JsonPropertyName("fontSize")]
+    public double FontSize { get; set; } = 48;
+
+    [JsonPropertyName("fontColorArgb")]
+    public uint FontColorArgb { get; set; } = 0xFFFFFFFF;
+
+    [JsonPropertyName("outlineColorArgb")]
+    public uint OutlineColorArgb { get; set; } = 0xFF000000;
+
+    [JsonPropertyName("outlineThickness")]
+    public double OutlineThickness { get; set; } = 2.0;
+
+    [JsonPropertyName("backgroundColorArgb")]
+    public uint BackgroundColorArgb { get; set; } = 0x80000000;
+
+    [JsonPropertyName("position")]
+    public SubtitlePosition Position { get; set; } = SubtitlePosition.Bottom;
+
+    [JsonPropertyName("isBold")]
+    public bool IsBold { get; set; }
+
+    [JsonPropertyName("isItalic")]
+    public bool IsItalic { get; set; }
 }
 
 /// <summary>

@@ -46,6 +46,8 @@ public partial class PreviewViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CurrentTimeDisplay))]
+    [NotifyPropertyChangedFor(nameof(CurrentSubtitleText))]
+    [NotifyPropertyChangedFor(nameof(HasSubtitle))]
     private long _currentTimeMs = 0;
 
     /// <summary>
@@ -62,6 +64,17 @@ public partial class PreviewViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty]
     private bool _isLoading = false;
+
+    /// <summary>
+    /// 현재 시간에 표시할 자막 텍스트 (없으면 null)
+    /// </summary>
+    public string? CurrentSubtitleText =>
+        _timelineViewModel?.GetSubtitleTextAt(CurrentTimeMs);
+
+    /// <summary>
+    /// 자막이 표시 중인지 여부
+    /// </summary>
+    public bool HasSubtitle => CurrentSubtitleText != null;
 
     public PreviewViewModel(ProjectService projectService)
     {

@@ -17,6 +17,23 @@
         <Grid Grid.Row="1" Background="Black">
             <Image Source="{Binding Preview.PreviewImage}" Stretch="Uniform" />
 
+            <!-- 자막 오버레이 -->
+            <Border Background="#80000000"
+                    CornerRadius="4"
+                    Padding="16,8"
+                    Margin="0,0,0,40"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Bottom"
+                    MaxWidth="600"
+                    IsVisible="{Binding Preview.HasSubtitle}">
+                <TextBlock Text="{Binding Preview.CurrentSubtitleText}"
+                          Foreground="White"
+                          FontSize="20"
+                          FontWeight="SemiBold"
+                          TextAlignment="Center"
+                          TextWrapping="Wrap"/>
+            </Border>
+
             <!-- Proxy Indicator Badge -->
             <Border Background="{StaticResource WarningBrush}"
                     CornerRadius="3"

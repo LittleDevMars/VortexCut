@@ -129,10 +129,13 @@ public class ClipCanvasPanel : Control
         InvalidateVisual();
     }
 
-    public void SetTracks(List<TrackModel> videoTracks, List<TrackModel> audioTracks)
+    private List<TrackModel> _subtitleTracks = new();
+
+    public void SetTracks(List<TrackModel> videoTracks, List<TrackModel> audioTracks, List<TrackModel>? subtitleTracks = null)
     {
         _videoTracks = videoTracks;
         _audioTracks = audioTracks;
+        _subtitleTracks = subtitleTracks ?? new List<TrackModel>();
         InvalidateVisual();
     }
 
@@ -391,6 +394,57 @@ public class ClipCanvasPanel : Control
                 DrawLockedTrackOverlay(context, trackRect);
             }
         }
+
+        // 오디오/자막 트랙 경계 구분선
+        if (_subtitleTracks.Count > 0)
+        {
+            double subtitleStartY = audioStartY + _audioTracks.Sum(t => t.Height);
+
+            // 구분선
+            context.DrawLine(RenderResourceCache.SeparatorMainPen,
+                new Point(0, subtitleStartY),
+                new Point(Bounds.Width, subtitleStartY));
+
+            // SUBTITLE 라벨
+            var subtitleLabel = new FormattedText(
+                "SUBTITLE",
+                System.Globalization.CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                RenderResourceCache.SegoeUIBold,
+                10,
+                RenderResourceCache.GetSolidBrush(Color.Parse("#FFC857")));
+
+            var subtitleLabelBg = new Rect(5, subtitleStartY + 3, subtitleLabel.Width + 8, 12);
+            context.FillRectangle(RenderResourceCache.LabelBgBrush, subtitleLabelBg);
+            context.DrawText(subtitleLabel, new Point(9, subtitleStartY + 4));
+
+            // 자막 트랙
+            for (int i = 0; i < _subtitleTracks.Count; i++)
+            {
+                var track = _subtitleTracks[i];
+                double y = subtitleStartY + i * track.Height;
+                var trackRect = new Rect(0, y, Bounds.Width, track.Height);
+
+                // 자막 트랙 그라디언트 (앰버/골드 톤)
+                var subIsEven = i % 2 == 0;
+                var subtitleTrackGradient = subIsEven
+                    ? RenderResourceCache.GetVerticalGradient(Color.Parse("#2D2820"), Color.Parse("#252018"))
+                    : RenderResourceCache.GetVerticalGradient(Color.Parse("#252018"), Color.Parse("#1E1A12"));
+
+                context.FillRectangle(subtitleTrackGradient, trackRect);
+
+                if (i > 0)
+                {
+                    context.DrawLine(RenderResourceCache.TrackHighlightPen,
+                        new Point(0, y), new Point(Bounds.Width, y));
+                }
+
+                context.DrawRectangle(RenderResourceCache.TrackBorderPen, trackRect);
+
+                if (track.IsLocked)
+                    DrawLockedTrackOverlay(context, trackRect);
+            }
+        }
     }
 
     /// <summary>
@@ -508,13 +562,33 @@ public class ClipCanvasPanel : Control
         bool isDragging = _isDragging && clip == _draggingClip;
         bool isTrimming = _isTrimming && clip == _draggingClip;
 
-        // 클립 타입 감지 (비디오/오디오)
+        // 클립 타입 감지 (비디오/오디오/자막)
         bool isAudioClip = track.Type == TrackType.Audio;
+        bool isSubtitleClip = track.Type == TrackType.Subtitle;
 
         // 클립 배경 (그라데이션 - DaVinci Resolve 스타일)
         Color topColor, bottomColor;
 
-        if (isAudioClip)
+        if (isSubtitleClip)
+        {
+            // 자막 클립: 앰버/골드 그라데이션
+            if (isDragging || isTrimming)
+            {
+                topColor = Color.Parse("#FFD87C");
+                bottomColor = Color.Parse("#FFC857");
+            }
+            else if (isSelected)
+            {
+                topColor = Color.Parse("#FFC857");
+                bottomColor = Color.Parse("#E0A830");
+            }
+            else
+            {
+                topColor = Color.Parse("#7A6A3A");
+                bottomColor = Color.Parse("#6A5A2A");
+            }
+        }
+        else if (isAudioClip)
         {
             // 오디오 클립: 초록색 그라데이션
             if (isDragging || isTrimming)
@@ -806,13 +880,13 @@ public class ClipCanvasPanel : Control
         // 클립 타입 아이콘 (좌측 상단)
         if (width > 30)
         {
-            var iconText = isAudioClip ? "🔊" : "🎬";
+            var iconText = isSubtitleClip ? "T" : (isAudioClip ? "🔊" : "🎬");
             var iconFormatted = new FormattedText(
                 iconText,
                 System.Globalization.CultureInfo.CurrentCulture,
                 FlowDirection.LeftToRight,
-                RenderResourceCache.SegoeUI,
-                14,
+                isSubtitleClip ? RenderResourceCache.SegoeUIBold : RenderResourceCache.SegoeUI,
+                isSubtitleClip ? 12 : 14,
                 RenderResourceCache.WhiteBrush);
 
             // 아이콘 배경
@@ -823,15 +897,24 @@ public class ClipCanvasPanel : Control
             context.DrawText(iconFormatted, new Point(x + 7, y + 5));
         }
 
-        // 클립 이름 (가독성 개선)
+        // 클립 이름 또는 자막 텍스트 (가독성 개선)
         if (width > 40) // 너무 좁은 클립은 텍스트 생략
         {
-            var fileName = System.IO.Path.GetFileNameWithoutExtension(clip.FilePath);
-            if (fileName.Length > 20)
-                fileName = fileName.Substring(0, 17) + "...";
+            string displayName;
+            if (isSubtitleClip && clip is SubtitleClipModel subtitleClip)
+            {
+                // 자막 클립: 자막 텍스트 표시 (줄바꿈 → 공백)
+                displayName = subtitleClip.Text.Replace('\n', ' ');
+            }
+            else
+            {
+                displayName = System.IO.Path.GetFileNameWithoutExtension(clip.FilePath);
+            }
+            if (displayName.Length > 20)
+                displayName = displayName.Substring(0, 17) + "...";
 
             var text = new FormattedText(
-                fileName,
+                displayName,
                 System.Globalization.CultureInfo.CurrentCulture,
                 FlowDirection.LeftToRight,
                 RenderResourceCache.SegoeUIBold,
@@ -2484,10 +2567,32 @@ public class ClipCanvasPanel : Control
     private double GetTrackYPosition(int trackIndex)
     {
         double y = 0;
-        for (int i = 0; i < trackIndex && i < _videoTracks.Count; i++)
+        int idx = 0;
+
+        // 비디오 트랙
+        for (int i = 0; i < _videoTracks.Count; i++)
         {
+            if (idx == trackIndex) return y;
             y += _videoTracks[i].Height;
+            idx++;
         }
+
+        // 오디오 트랙
+        for (int i = 0; i < _audioTracks.Count; i++)
+        {
+            if (idx == trackIndex) return y;
+            y += _audioTracks[i].Height;
+            idx++;
+        }
+
+        // 자막 트랙
+        for (int i = 0; i < _subtitleTracks.Count; i++)
+        {
+            if (idx == trackIndex) return y;
+            y += _subtitleTracks[i].Height;
+            idx++;
+        }
+
         return y;
     }
 
@@ -2499,6 +2604,10 @@ public class ClipCanvasPanel : Control
         int audioIndex = index - _videoTracks.Count;
         if (audioIndex >= 0 && audioIndex < _audioTracks.Count)
             return _audioTracks[audioIndex];
+
+        int subtitleIndex = index - _videoTracks.Count - _audioTracks.Count;
+        if (subtitleIndex >= 0 && subtitleIndex < _subtitleTracks.Count)
+            return _subtitleTracks[subtitleIndex];
 
         return null;
     }
@@ -2521,6 +2630,14 @@ public class ClipCanvasPanel : Control
             if (y >= currentY && y < currentY + _audioTracks[i].Height)
                 return _videoTracks.Count + i;
             currentY += _audioTracks[i].Height;
+        }
+
+        // 자막 트랙 검사
+        for (int i = 0; i < _subtitleTracks.Count; i++)
+        {
+            if (y >= currentY && y < currentY + _subtitleTracks[i].Height)
+                return _videoTracks.Count + _audioTracks.Count + i;
+            currentY += _subtitleTracks[i].Height;
         }
 
         return 0; // 기본값

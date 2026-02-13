@@ -1,8 +1,12 @@
 using System;
+using System.Linq;
+using System.Runtime.InteropServices;
 using System.Timers;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using VortexCut.Core.Models;
+using VortexCut.Interop;
 using VortexCut.Interop.Services;
 using VortexCut.UI.Services;
 
@@ -21,6 +25,7 @@ public partial class ExportViewModel : ViewModelBase, IDisposable
     private readonly ProjectService _projectService;
     private readonly ExportService _exportService;
     private readonly System.Timers.Timer _progressTimer;
+    private TimelineViewModel? _timelineViewModel;
 
     // === 설정 ===
 
@@ -74,6 +79,14 @@ public partial class ExportViewModel : ViewModelBase, IDisposable
     /// Export 완료 시 호출되는 콜백 (다이얼로그 닫기용)
     /// </summary>
     public Action? OnExportComplete { get; set; }
+
+    /// <summary>
+    /// TimelineViewModel 설정 (자막 클립 접근용)
+    /// </summary>
+    public void SetTimelineViewModel(TimelineViewModel timelineVm)
+    {
+        _timelineViewModel = timelineVm;
+    }
 
     public ExportViewModel(ProjectService projectService)
     {
@@ -130,13 +143,32 @@ public partial class ExportViewModel : ViewModelBase, IDisposable
 
         try
         {
-            _exportService.StartExport(
-                timelineHandle,
-                OutputPath,
-                Width,
-                Height,
-                Fps,
-                Crf);
+            // 자막 오버레이 생성 (SubtitleClipModel이 있으면)
+            var subtitleListHandle = BuildSubtitleOverlays();
+
+            if (subtitleListHandle != IntPtr.Zero)
+            {
+                // 자막 포함 Export (v2) — subtitleList 소유권 Rust로 이전
+                _exportService.StartExportWithSubtitles(
+                    timelineHandle,
+                    OutputPath,
+                    Width,
+                    Height,
+                    Fps,
+                    Crf,
+                    subtitleListHandle);
+            }
+            else
+            {
+                // 자막 없음 — 기존 Export
+                _exportService.StartExport(
+                    timelineHandle,
+                    OutputPath,
+                    Width,
+                    Height,
+                    Fps,
+                    Crf);
+            }
 
             IsExporting = true;
             IsComplete = false;
@@ -205,6 +237,67 @@ public partial class ExportViewModel : ViewModelBase, IDisposable
                 StatusText = $"Export 진행 중... {progress}%";
             }
         });
+    }
+
+    /// <summary>
+    /// 자막 클립 → Rust SubtitleOverlayList 생성
+    /// 자막 클립이 없으면 IntPtr.Zero 반환
+    /// </summary>
+    private IntPtr BuildSubtitleOverlays()
+    {
+        if (_timelineViewModel == null) return IntPtr.Zero;
+
+        var subtitleClips = _timelineViewModel.Clips
+            .OfType<SubtitleClipModel>()
+            .OrderBy(c => c.StartTimeMs)
+            .ToList();
+
+        if (subtitleClips.Count == 0) return IntPtr.Zero;
+
+        var listHandle = NativeMethods.exporter_create_subtitle_list();
+        if (listHandle == IntPtr.Zero) return IntPtr.Zero;
+
+        int videoWidth = (int)Width;
+        int videoHeight = (int)Height;
+
+        foreach (var clip in subtitleClips)
+        {
+            try
+            {
+                // Avalonia로 자막 텍스트 → RGBA 비트맵 렌더링
+                var bitmap = SubtitleRenderService.RenderSubtitle(
+                    clip.Text, clip.Style, videoWidth, videoHeight);
+
+                // RGBA 데이터를 네이티브 메모리에 복사하여 FFI 전달
+                IntPtr rgbaPtr = Marshal.AllocCoTaskMem(bitmap.RgbaData.Length);
+                try
+                {
+                    Marshal.Copy(bitmap.RgbaData, 0, rgbaPtr, bitmap.RgbaData.Length);
+
+                    NativeMethods.exporter_subtitle_list_add(
+                        listHandle,
+                        clip.StartTimeMs,
+                        clip.EndTimeMs,
+                        bitmap.X,
+                        bitmap.Y,
+                        (uint)bitmap.Width,
+                        (uint)bitmap.Height,
+                        rgbaPtr,
+                        (uint)bitmap.RgbaData.Length);
+                }
+                finally
+                {
+                    Marshal.FreeCoTaskMem(rgbaPtr);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"자막 오버레이 생성 실패 [{clip.StartTimeMs}ms]: {ex.Message}");
+            }
+        }
+
+        return listHandle;
     }
 
     public void Dispose()

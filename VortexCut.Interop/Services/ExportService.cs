@@ -102,6 +102,53 @@ public class ExportService : IDisposable
     }
 
     /// <summary>
+    /// 자막 포함 Export 시작 (v2)
+    /// subtitleListHandle: Rust SubtitleOverlayList 핸들 (null이면 자막 없음)
+    /// 호출 후 subtitleList 소유권은 Rust로 이전됨
+    /// </summary>
+    public void StartExportWithSubtitles(
+        IntPtr timelineHandle,
+        string outputPath,
+        uint width,
+        uint height,
+        double fps,
+        uint crf,
+        IntPtr subtitleListHandle)
+    {
+        ThrowIfDisposed();
+
+        if (_jobHandle != IntPtr.Zero)
+            throw new InvalidOperationException("Export가 이미 진행 중입니다.");
+
+        if (timelineHandle == IntPtr.Zero)
+            throw new ArgumentException("Timeline handle이 null입니다");
+
+        if (string.IsNullOrEmpty(outputPath))
+            throw new ArgumentException("출력 경로가 비어있습니다");
+
+        IntPtr outputPathPtr = Marshal.StringToCoTaskMemUTF8(outputPath);
+        try
+        {
+            int result = NativeMethods.exporter_start_v2(
+                timelineHandle,
+                outputPathPtr,
+                width,
+                height,
+                fps,
+                crf,
+                subtitleListHandle,
+                out _jobHandle);
+
+            if (result != ErrorCodes.SUCCESS)
+                throw new RustException($"exporter_start_v2 실패: error {result}");
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(outputPathPtr);
+        }
+    }
+
+    /// <summary>
     /// Export 취소
     /// </summary>
     public void Cancel()

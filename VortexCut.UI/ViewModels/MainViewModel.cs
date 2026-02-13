@@ -8,6 +8,7 @@ using VortexCut.Core.Models;
 using VortexCut.Core.Serialization;
 using VortexCut.UI.Services;
 using VortexCut.Interop.Services;
+using VortexCut.Core.Services;
 using Avalonia.Media.Imaging;
 
 namespace VortexCut.UI.ViewModels;
@@ -240,6 +241,58 @@ public partial class MainViewModel : ViewModelBase
             ProjectBin.SetLoading(false);
             System.Diagnostics.Debug.WriteLine($"OpenVideoFileAsync ERROR: {ex}");
             _toastService?.ShowError("미디어 임포트 실패", ex.Message);
+        }
+    }
+
+    [RelayCommand]
+    private async Task ImportSrtFileAsync()
+    {
+        if (_storageProvider == null)
+        {
+            _toastService?.ShowError("오류", "파일 선택기를 사용할 수 없습니다.");
+            return;
+        }
+
+        try
+        {
+            var fileTypes = new FilePickerFileType[]
+            {
+                new("SRT Subtitle Files")
+                {
+                    Patterns = new[] { "*.srt" }
+                },
+                new("All Files")
+                {
+                    Patterns = new[] { "*.*" }
+                }
+            };
+
+            var files = await _storageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = "SRT 자막 파일 가져오기",
+                FileTypeFilter = fileTypes,
+                AllowMultiple = false
+            });
+
+            if (files.Count == 0)
+                return;
+
+            var filePath = files[0].Path.LocalPath;
+
+            // 자막 트랙이 없으면 기본 트랙 생성
+            if (Timeline.SubtitleTracks.Count == 0)
+            {
+                Timeline.AddSubtitleTrackCommand.Execute(null);
+            }
+
+            Timeline.ImportSrt(filePath, 0);
+
+            _toastService?.ShowSuccess("자막 임포트 완료", $"{Path.GetFileName(filePath)}을(를) 가져왔습니다.");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"ImportSrtFileAsync ERROR: {ex}");
+            _toastService?.ShowError("자막 임포트 실패", ex.Message);
         }
     }
 

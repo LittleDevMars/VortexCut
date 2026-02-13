@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using VortexCut.Core.Models;
+using VortexCut.Core.Services;
 using VortexCut.UI.Services;
 
 namespace VortexCut.UI.ViewModels;
@@ -36,6 +37,12 @@ public partial class TimelineViewModel : ViewModelBase
 
     [ObservableProperty]
     private ObservableCollection<TrackModel> _audioTracks = new();
+
+    [ObservableProperty]
+    private ObservableCollection<TrackModel> _subtitleTracks = new();
+
+    // 자막 클립 ID 발급용 카운터
+    private ulong _nextSubtitleClipId = 100000;
 
     [ObservableProperty]
     private long _currentTimeMs = 0;
@@ -130,7 +137,7 @@ public partial class TimelineViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 기본 트랙 초기화 (6개 비디오 + 4개 오디오)
+    /// 기본 트랙 초기화 (6개 비디오 + 4개 오디오 + 1개 자막)
     /// </summary>
     private void InitializeDefaultTracks()
     {
@@ -145,6 +152,9 @@ public partial class TimelineViewModel : ViewModelBase
         {
             AddAudioTrack();
         }
+
+        // 1개 자막 트랙
+        AddSubtitleTrack();
     }
 
     /// <summary>
@@ -299,27 +309,98 @@ public partial class TimelineViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// 자막 트랙 추가
+    /// </summary>
+    [RelayCommand]
+    public void AddSubtitleTrack()
+    {
+        var track = new TrackModel
+        {
+            Id = _nextTrackId++,
+            Index = SubtitleTracks.Count,
+            Type = TrackType.Subtitle,
+            Name = $"S{SubtitleTracks.Count + 1}",
+            ColorArgb = 0xFFFFC857, // 앰버
+            Height = 40 // 자막 트랙은 약간 작게
+        };
+        SubtitleTracks.Add(track);
+    }
+
+    /// <summary>
     /// 트랙 제거
     /// </summary>
     public void RemoveTrack(TrackModel track)
     {
-        if (track.Type == TrackType.Video)
+        var list = track.Type switch
         {
-            VideoTracks.Remove(track);
-            // 인덱스 재정렬
-            for (int i = 0; i < VideoTracks.Count; i++)
-            {
-                VideoTracks[i].Index = i;
-            }
+            TrackType.Video => VideoTracks,
+            TrackType.Audio => AudioTracks,
+            TrackType.Subtitle => SubtitleTracks,
+            _ => VideoTracks
+        };
+        list.Remove(track);
+        for (int i = 0; i < list.Count; i++)
+            list[i].Index = i;
+    }
+
+    /// <summary>
+    /// SRT 파일 임포트 → 자막 클립 생성
+    /// </summary>
+    public void ImportSrt(string filePath, int trackIndex = 0)
+    {
+        var entries = SrtParser.Parse(filePath);
+        if (entries.Count == 0) return;
+
+        // 자막 트랙이 없으면 추가
+        if (SubtitleTracks.Count == 0)
+            AddSubtitleTrack();
+
+        var actions = new List<Core.Interfaces.IUndoableAction>();
+        foreach (var entry in entries)
+        {
+            var clip = new SubtitleClipModel(
+                _nextSubtitleClipId++,
+                entry.StartMs,
+                entry.EndMs - entry.StartMs,
+                entry.Text,
+                trackIndex);
+
+            actions.Add(new Services.Actions.AddSubtitleClipAction(Clips, clip));
         }
+
+        if (actions.Count == 1)
+            _undoRedoService.ExecuteAction(actions[0]);
         else
-        {
-            AudioTracks.Remove(track);
-            for (int i = 0; i < AudioTracks.Count; i++)
-            {
-                AudioTracks[i].Index = i;
-            }
-        }
+            _undoRedoService.ExecuteAction(new Services.Actions.CompositeAction("SRT 임포트", actions));
+    }
+
+    /// <summary>
+    /// 자막 클립 → SRT 파일 내보내기
+    /// </summary>
+    public void ExportSrt(string filePath, int trackIndex = 0)
+    {
+        var subtitleClips = Clips
+            .OfType<SubtitleClipModel>()
+            .Where(c => c.TrackIndex == trackIndex)
+            .OrderBy(c => c.StartTimeMs)
+            .ToList();
+
+        var entries = subtitleClips.Select((c, i) =>
+            new SubtitleEntry(i + 1, c.StartTimeMs, c.EndTimeMs, c.Text))
+            .ToList();
+
+        SrtParser.Export(filePath, entries);
+    }
+
+    /// <summary>
+    /// 특정 시간에 표시할 자막 텍스트 가져오기
+    /// </summary>
+    public string? GetSubtitleTextAt(long timeMs)
+    {
+        return Clips
+            .OfType<SubtitleClipModel>()
+            .FirstOrDefault(c => timeMs >= c.StartTimeMs && timeMs < c.EndTimeMs)
+            ?.Text;
     }
 
     /// <summary>
@@ -458,6 +539,8 @@ public partial class TimelineViewModel : ViewModelBase
         foreach (var track in VideoTracks)
             track.DisplayMode = GlobalDisplayMode;
         foreach (var track in AudioTracks)
+            track.DisplayMode = GlobalDisplayMode;
+        foreach (var track in SubtitleTracks)
             track.DisplayMode = GlobalDisplayMode;
     }
 }

@@ -27,6 +27,7 @@ public class TimelineCanvas : Grid
     // 이벤트 핸들러 저장 (구독 해제용)
     private System.Collections.Specialized.NotifyCollectionChangedEventHandler? _videoTracksChangedHandler;
     private System.Collections.Specialized.NotifyCollectionChangedEventHandler? _audioTracksChangedHandler;
+    private System.Collections.Specialized.NotifyCollectionChangedEventHandler? _subtitleTracksChangedHandler;
     private System.Collections.Specialized.NotifyCollectionChangedEventHandler? _clipsChangedHandler;
 
     /// <summary>
@@ -44,6 +45,8 @@ public class TimelineCanvas : Grid
                     _viewModel.VideoTracks.CollectionChanged -= _videoTracksChangedHandler;
                 if (_audioTracksChangedHandler != null)
                     _viewModel.AudioTracks.CollectionChanged -= _audioTracksChangedHandler;
+                if (_subtitleTracksChangedHandler != null)
+                    _viewModel.SubtitleTracks.CollectionChanged -= _subtitleTracksChangedHandler;
                 if (_clipsChangedHandler != null)
                     _viewModel.Clips.CollectionChanged -= _clipsChangedHandler;
             }
@@ -56,15 +59,20 @@ public class TimelineCanvas : Grid
                 _timelineHeader.SetViewModel(_viewModel);
                 _clipCanvasPanel.SetViewModel(_viewModel);
                 _trackListPanel.SetTracks(_viewModel.VideoTracks, _viewModel.AudioTracks);
-                _clipCanvasPanel.SetTracks(_viewModel.VideoTracks.ToList(), _viewModel.AudioTracks.ToList()); // CRITICAL: 트랙 초기 설정!
+                _clipCanvasPanel.SetTracks(
+                    _viewModel.VideoTracks.ToList(),
+                    _viewModel.AudioTracks.ToList(),
+                    _viewModel.SubtitleTracks.ToList());
 
                 // 트랙/클립 변경 감지 (핸들러 저장)
                 _videoTracksChangedHandler = (s, e) => UpdateTracks();
                 _audioTracksChangedHandler = (s, e) => UpdateTracks();
+                _subtitleTracksChangedHandler = (s, e) => UpdateTracks();
                 _clipsChangedHandler = (s, e) => UpdateClips();
 
                 _viewModel.VideoTracks.CollectionChanged += _videoTracksChangedHandler;
                 _viewModel.AudioTracks.CollectionChanged += _audioTracksChangedHandler;
+                _viewModel.SubtitleTracks.CollectionChanged += _subtitleTracksChangedHandler;
                 _viewModel.Clips.CollectionChanged += _clipsChangedHandler;
             }
         }
@@ -184,7 +192,10 @@ public class TimelineCanvas : Grid
         if (_viewModel == null) return;
 
         _trackListPanel.SetTracks(_viewModel.VideoTracks, _viewModel.AudioTracks);
-        _clipCanvasPanel.SetTracks(_viewModel.VideoTracks.ToList(), _viewModel.AudioTracks.ToList());
+        _clipCanvasPanel.SetTracks(
+            _viewModel.VideoTracks.ToList(),
+            _viewModel.AudioTracks.ToList(),
+            _viewModel.SubtitleTracks.ToList());
     }
 
     /// <summary>

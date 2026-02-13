@@ -355,4 +355,48 @@ public static class NativeMethods
     /// </summary>
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     public static extern int exporter_destroy(IntPtr job);
+
+    // ==================== Export Subtitle Functions ====================
+
+    /// <summary>
+    /// 자막 오버레이 목록 생성
+    /// </summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern IntPtr exporter_create_subtitle_list();
+
+    /// <summary>
+    /// 자막 오버레이 추가 (RGBA 비트맵)
+    /// </summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int exporter_subtitle_list_add(
+        IntPtr list,
+        long startMs,
+        long endMs,
+        int x,
+        int y,
+        uint width,
+        uint height,
+        IntPtr rgbaPtr,
+        uint rgbaLen);
+
+    /// <summary>
+    /// 자막 포함 Export 시작 (v2)
+    /// subtitleList: null이면 자막 없음, 소유권 Rust로 이전
+    /// </summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int exporter_start_v2(
+        IntPtr timeline,
+        IntPtr outputPath,
+        uint width,
+        uint height,
+        double fps,
+        uint crf,
+        IntPtr subtitleList,
+        out IntPtr outJob);
+
+    /// <summary>
+    /// 자막 오버레이 목록 해제 (Export 취소 시에만 사용)
+    /// </summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int exporter_free_subtitle_list(IntPtr list);
 }

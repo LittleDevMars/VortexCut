@@ -3,6 +3,7 @@
 
 use crate::encoding::exporter::{ExportConfig, ExportJob};
 use crate::ffi::types::ErrorCode;
+use crate::subtitle::overlay::{SubtitleOverlay, SubtitleOverlayList};
 use crate::timeline::Timeline;
 use std::ffi::{c_void, c_char, CStr, CString};
 use std::sync::{Arc, Mutex};
@@ -142,6 +143,124 @@ pub extern "C" fn exporter_destroy(job: *mut c_void) -> i32 {
 
     unsafe {
         let _ = Box::from_raw(job as *mut ExportJob);
+    }
+
+    ErrorCode::Success as i32
+}
+
+// ==================== 자막 오버레이 FFI ====================
+
+/// 자막 오버레이 목록 생성
+/// 반환: SubtitleOverlayList 핸들 (exporter_free_subtitle_list로 해제)
+#[no_mangle]
+pub extern "C" fn exporter_create_subtitle_list() -> *mut c_void {
+    let list = Box::new(SubtitleOverlayList::new());
+    Box::into_raw(list) as *mut c_void
+}
+
+/// 자막 오버레이 추가
+/// rgba_ptr: RGBA 비트맵 데이터 포인터 (width * height * 4 bytes)
+/// rgba_len: 바이트 수
+#[no_mangle]
+pub extern "C" fn exporter_subtitle_list_add(
+    list: *mut c_void,
+    start_ms: i64,
+    end_ms: i64,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    rgba_ptr: *const u8,
+    rgba_len: u32,
+) -> i32 {
+    if list.is_null() || rgba_ptr.is_null() {
+        return ErrorCode::NullPointer as i32;
+    }
+
+    let expected_size = (width as usize) * (height as usize) * 4;
+    if (rgba_len as usize) < expected_size {
+        return ErrorCode::InvalidParam as i32;
+    }
+
+    unsafe {
+        let list_ref = &mut *(list as *mut SubtitleOverlayList);
+        let data = std::slice::from_raw_parts(rgba_ptr, expected_size).to_vec();
+
+        list_ref.overlays.push(SubtitleOverlay {
+            start_ms,
+            end_ms,
+            x,
+            y,
+            width,
+            height,
+            rgba_data: data,
+        });
+    }
+
+    ErrorCode::Success as i32
+}
+
+/// 자막 포함 Export 시작 (v2)
+/// subtitle_list: exporter_create_subtitle_list()로 생성한 핸들 (null이면 자막 없음)
+/// 자막 목록의 소유권이 Rust로 이전됨 — 별도로 free할 필요 없음
+#[no_mangle]
+pub extern "C" fn exporter_start_v2(
+    timeline: *mut c_void,
+    output_path: *const c_char,
+    width: u32,
+    height: u32,
+    fps: f64,
+    crf: u32,
+    subtitle_list: *mut c_void,
+    out_job: *mut *mut c_void,
+) -> i32 {
+    if timeline.is_null() || output_path.is_null() || out_job.is_null() {
+        return ErrorCode::NullPointer as i32;
+    }
+
+    unsafe {
+        let c_str = CStr::from_ptr(output_path);
+        let output_path_str = match c_str.to_str() {
+            Ok(s) => s.to_string(),
+            Err(_) => return ErrorCode::InvalidParam as i32,
+        };
+
+        let timeline_arc = Arc::from_raw(timeline as *const Mutex<Timeline>);
+        let timeline_clone = Arc::clone(&timeline_arc);
+        let _ = Arc::into_raw(timeline_arc);
+
+        let config = ExportConfig {
+            output_path: output_path_str,
+            width,
+            height,
+            fps,
+            crf,
+        };
+
+        // 자막 목록 소유권 이전 (null이면 None)
+        let subtitles = if subtitle_list.is_null() {
+            None
+        } else {
+            Some(*Box::from_raw(subtitle_list as *mut SubtitleOverlayList))
+        };
+
+        let job = ExportJob::start_with_subtitles(timeline_clone, config, subtitles);
+        let job_box = Box::new(job);
+        *out_job = Box::into_raw(job_box) as *mut c_void;
+    }
+
+    ErrorCode::Success as i32
+}
+
+/// 자막 오버레이 목록 해제 (Export에 전달하지 않고 취소할 때만 사용)
+#[no_mangle]
+pub extern "C" fn exporter_free_subtitle_list(list: *mut c_void) -> i32 {
+    if list.is_null() {
+        return ErrorCode::NullPointer as i32;
+    }
+
+    unsafe {
+        let _ = Box::from_raw(list as *mut SubtitleOverlayList);
     }
 
     ErrorCode::Success as i32

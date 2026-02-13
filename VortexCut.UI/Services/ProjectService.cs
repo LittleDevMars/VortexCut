@@ -2,6 +2,7 @@ using VortexCut.Core.Models;
 using VortexCut.Core.Serialization;
 using VortexCut.UI.ViewModels;
 using VortexCut.Interop.Services;
+using System.Linq;
 
 namespace VortexCut.UI.Services;
 
@@ -261,6 +262,12 @@ public class ProjectService : IDisposable
             data.AudioTracks.Add(TrackToDto(track));
         }
 
+        // 자막 트랙
+        foreach (var track in timelineVm.SubtitleTracks)
+        {
+            data.SubtitleTracks.Add(TrackToDto(track));
+        }
+
         // Clips
         foreach (var clip in timelineVm.Clips)
         {
@@ -297,6 +304,7 @@ public class ProjectService : IDisposable
         timelineVm.Reset();
         mainVm.Preview.Reset();
         mainVm.ProjectBin.Clear();
+        timelineVm.SubtitleTracks.Clear();
 
         mainVm.ProjectName = data.ProjectName;
 
@@ -347,12 +355,36 @@ public class ProjectService : IDisposable
             combinedIndexToTrackId[combinedIndex++] = trackId;
         }
 
+        // 자막 트랙 복원 (Rust에 등록하지 않음 — C#만)
+        int subtitleTrackStartIndex = combinedIndex;
+        for (int i = 0; i < data.SubtitleTracks.Count; i++)
+        {
+            var dto = data.SubtitleTracks[i];
+            var model = DtoToTrack(dto, (ulong)(1000 + i), TrackType.Subtitle);
+            timelineVm.SubtitleTracks.Add(model);
+            combinedIndex++;
+        }
+
         // 6) Clips 복원 (Rust Timeline + Project + ViewModel)
         _currentProject.Clips.Clear();
         timelineVm.Clips.Clear();
 
+        int subtitleCombinedStart = data.VideoTracks.Count + data.AudioTracks.Count;
+
         foreach (var clipDto in data.Clips)
         {
+            // 자막 클립인지 판별
+            bool isSubtitleClip = clipDto.TrackIndex >= subtitleCombinedStart
+                                  || clipDto.SubtitleText != null;
+
+            if (isSubtitleClip)
+            {
+                // 자막 클립은 Rust에 등록하지 않음
+                var subtitleClip = DtoToSubtitleClip(clipDto);
+                timelineVm.Clips.Add(subtitleClip);
+                continue;
+            }
+
             if (!combinedIndexToTrackId.TryGetValue(clipDto.TrackIndex, out var trackId))
             {
                 // 매핑 실패 시 기본 비디오 트랙에 배치
@@ -437,23 +469,35 @@ public class ProjectService : IDisposable
         Height = data.Height
     };
 
-    private static ClipData ClipToDto(ClipModel clip) => new()
+    private static ClipData ClipToDto(ClipModel clip)
     {
-        Id = clip.Id,
-        FilePath = clip.FilePath,
-        StartTimeMs = clip.StartTimeMs,
-        DurationMs = clip.DurationMs,
-        TrackIndex = clip.TrackIndex,
-        ColorLabelArgb = clip.ColorLabelArgb,
-        LinkedAudioClipId = clip.LinkedAudioClipId,
-        LinkedVideoClipId = clip.LinkedVideoClipId,
-        OpacityKeyframes = KeyframeSystemToDto(clip.OpacityKeyframes),
-        VolumeKeyframes = KeyframeSystemToDto(clip.VolumeKeyframes),
-        PositionXKeyframes = KeyframeSystemToDto(clip.PositionXKeyframes),
-        PositionYKeyframes = KeyframeSystemToDto(clip.PositionYKeyframes),
-        ScaleKeyframes = KeyframeSystemToDto(clip.ScaleKeyframes),
-        RotationKeyframes = KeyframeSystemToDto(clip.RotationKeyframes)
-    };
+        var dto = new ClipData
+        {
+            Id = clip.Id,
+            FilePath = clip.FilePath,
+            StartTimeMs = clip.StartTimeMs,
+            DurationMs = clip.DurationMs,
+            TrackIndex = clip.TrackIndex,
+            ColorLabelArgb = clip.ColorLabelArgb,
+            LinkedAudioClipId = clip.LinkedAudioClipId,
+            LinkedVideoClipId = clip.LinkedVideoClipId,
+            OpacityKeyframes = KeyframeSystemToDto(clip.OpacityKeyframes),
+            VolumeKeyframes = KeyframeSystemToDto(clip.VolumeKeyframes),
+            PositionXKeyframes = KeyframeSystemToDto(clip.PositionXKeyframes),
+            PositionYKeyframes = KeyframeSystemToDto(clip.PositionYKeyframes),
+            ScaleKeyframes = KeyframeSystemToDto(clip.ScaleKeyframes),
+            RotationKeyframes = KeyframeSystemToDto(clip.RotationKeyframes)
+        };
+
+        // 자막 클립 전용 필드
+        if (clip is SubtitleClipModel subtitleClip)
+        {
+            dto.SubtitleText = subtitleClip.Text;
+            dto.SubtitleStyle = SubtitleStyleToDto(subtitleClip.Style);
+        }
+
+        return dto;
+    }
 
     private static ClipModel DtoToClip(ClipData data, ulong id)
     {
@@ -494,6 +538,46 @@ public class ProjectService : IDisposable
         ColorArgb = data.ColorArgb,
         Type = data.Type,
         DurationMs = data.DurationMs
+    };
+
+    private static SubtitleClipModel DtoToSubtitleClip(ClipData data)
+    {
+        var clip = new SubtitleClipModel(
+            data.Id, data.StartTimeMs, data.DurationMs,
+            data.SubtitleText ?? string.Empty, data.TrackIndex);
+
+        if (data.SubtitleStyle != null)
+        {
+            clip.Style = DtoToSubtitleStyle(data.SubtitleStyle);
+        }
+
+        return clip;
+    }
+
+    private static SubtitleStyleData SubtitleStyleToDto(SubtitleStyle style) => new()
+    {
+        FontFamily = style.FontFamily,
+        FontSize = style.FontSize,
+        FontColorArgb = style.FontColorArgb,
+        OutlineColorArgb = style.OutlineColorArgb,
+        OutlineThickness = style.OutlineThickness,
+        BackgroundColorArgb = style.BackgroundColorArgb,
+        Position = style.Position,
+        IsBold = style.IsBold,
+        IsItalic = style.IsItalic
+    };
+
+    private static SubtitleStyle DtoToSubtitleStyle(SubtitleStyleData data) => new()
+    {
+        FontFamily = data.FontFamily,
+        FontSize = data.FontSize,
+        FontColorArgb = data.FontColorArgb,
+        OutlineColorArgb = data.OutlineColorArgb,
+        OutlineThickness = data.OutlineThickness,
+        BackgroundColorArgb = data.BackgroundColorArgb,
+        Position = data.Position,
+        IsBold = data.IsBold,
+        IsItalic = data.IsItalic
     };
 
     private static KeyframeSystemData KeyframeSystemToDto(KeyframeSystem system)

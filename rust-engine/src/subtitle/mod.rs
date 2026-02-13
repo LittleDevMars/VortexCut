@@ -1,3 +1,3 @@
-// 자막 처리 모듈
+// 자막 처리 모듈 — RGBA 오버레이 알파 블렌딩
 
-// TODO: SRT/ASS 파서, 자막 렌더러 구현
+pub mod overlay;
