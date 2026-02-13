@@ -25,6 +25,7 @@ public enum KeyframeSystemType
 public partial class TimelineViewModel : ViewModelBase
 {
     private readonly ProjectService _projectService;
+    private readonly UndoRedoService _undoRedoService;
     private ulong _nextTrackId = 1;
 
     [ObservableProperty]
@@ -103,6 +104,8 @@ public partial class TimelineViewModel : ViewModelBase
     public RazorTool? RazorTool { get; private set; }
     public RippleEditService? RippleEditService { get; private set; }
     public LinkClipService? LinkClipService { get; private set; }
+    public UndoRedoService UndoRedo => _undoRedoService;
+    public ProjectService ProjectServiceRef => _projectService;
 
     /// <summary>
     /// 재생 중지 요청 콜백 (MainViewModel에서 설정)
@@ -112,6 +115,14 @@ public partial class TimelineViewModel : ViewModelBase
     public TimelineViewModel(ProjectService projectService)
     {
         _projectService = projectService;
+        _undoRedoService = new UndoRedoService();
+
+        // Undo/Redo 후 렌더 캐시 클리어
+        _undoRedoService.OnHistoryChanged = () =>
+        {
+            _projectService.ClearRenderCache();
+        };
+
         InitializeDefaultTracks();
         RazorTool = new RazorTool(this);
         RippleEditService = new RippleEditService(this);
@@ -196,6 +207,32 @@ public partial class TimelineViewModel : ViewModelBase
         Clips.Clear();
         CurrentTimeMs = 0;
         SelectedClip = null;
+        _undoRedoService.Clear();
+    }
+
+    /// <summary>
+    /// 드래그/트림 중 여부 (Undo 차단용, ClipCanvasPanel에서 설정)
+    /// </summary>
+    public bool IsEditing { get; set; }
+
+    /// <summary>
+    /// Undo (Ctrl+Z) — 드래그/트림 중에는 차단
+    /// </summary>
+    [RelayCommand]
+    public void Undo()
+    {
+        if (IsEditing) return;
+        _undoRedoService.Undo();
+    }
+
+    /// <summary>
+    /// Redo (Ctrl+Shift+Z / Ctrl+Y) — 드래그/트림 중에는 차단
+    /// </summary>
+    [RelayCommand]
+    public void Redo()
+    {
+        if (IsEditing) return;
+        _undoRedoService.Redo();
     }
 
     [RelayCommand]
@@ -209,27 +246,19 @@ public partial class TimelineViewModel : ViewModelBase
     {
         if (SelectedClip != null)
         {
-            // 삭제 전 구간 정보 저장 (썸네일 캐시 무효화용)
-            long deletedStart = SelectedClip.StartTimeMs;
-            long deletedEnd = SelectedClip.EndTimeMs;
-            string deletedPath = SelectedClip.FilePath;
-
-            if (RippleModeEnabled && RippleEditService != null)
+            if (RippleModeEnabled)
             {
-                // 리플 모드: 삭제 후 이후 클립 자동 이동
-                RippleEditService.RippleDelete(SelectedClip);
+                // 리플 모드: RippleDeleteAction으로 Undo 지원
+                var action = new Services.Actions.RippleDeleteAction(Clips, SelectedClip, _projectService);
+                _undoRedoService.ExecuteAction(action);
             }
             else
             {
-                // 일반 모드: 그냥 삭제
-                Clips.Remove(SelectedClip);
+                // 일반 모드: DeleteClipAction (FFI 연동)
+                var action = new Services.Actions.DeleteClipAction(Clips, _projectService, SelectedClip);
+                _undoRedoService.ExecuteAction(action);
             }
             SelectedClip = null;
-
-            // TODO: ThumbnailStripService.InvalidateRange 호출 연결은
-            // TimelineCanvas/ClipCanvasPanel에서 ThumbnailStripService 인스턴스를
-            // 주입받아 처리하거나, 중앙 이벤트 허브를 통해 위임할 수 있다.
-            // 여기서는 삭제된 구간 정보를 보존하는 것까지만 담당한다.
         }
     }
 
@@ -294,7 +323,7 @@ public partial class TimelineViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 마커 추가
+    /// 마커 추가 (Undo 지원)
     /// </summary>
     public void AddMarker(long timeMs, string name = "", MarkerType type = MarkerType.Comment)
     {
@@ -305,7 +334,8 @@ public partial class TimelineViewModel : ViewModelBase
             Name = name,
             Type = type
         };
-        Markers.Add(marker);
+        var action = new Services.Actions.AddMarkerAction(Markers, marker);
+        _undoRedoService.ExecuteAction(action);
     }
 
     /// <summary>
@@ -318,12 +348,13 @@ public partial class TimelineViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 마커 제거
+    /// 마커 제거 (Undo 지원)
     /// </summary>
     [RelayCommand]
     public void RemoveMarker(MarkerModel marker)
     {
-        Markers.Remove(marker);
+        var action = new Services.Actions.RemoveMarkerAction(Markers, marker);
+        _undoRedoService.ExecuteAction(action);
     }
 
     /// <summary>
@@ -344,7 +375,7 @@ public partial class TimelineViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 현재 Playhead 위치에 키프레임 추가 (K 키)
+    /// 현재 Playhead 위치에 키프레임 추가 (K 키, Undo 지원)
     /// </summary>
     [RelayCommand]
     public void AddKeyframeAtCurrentTime()
@@ -365,7 +396,9 @@ public partial class TimelineViewModel : ViewModelBase
             ? keyframeSystem.Interpolate(relativeTime)
             : 50.0;
 
-        keyframeSystem.AddKeyframe(relativeTime, currentValue, InterpolationType.Linear);
+        var action = new Services.Actions.AddKeyframeAction(
+            keyframeSystem, relativeTime, currentValue, InterpolationType.Linear);
+        _undoRedoService.ExecuteAction(action);
     }
 
     /// <summary>

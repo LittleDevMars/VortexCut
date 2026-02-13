@@ -38,6 +38,13 @@ public class ClipModel
     [Browsable(false)]
     public string? ProxyFilePath { get; set; }
 
+    /// <summary>
+    /// 원본 파일에서의 트림 시작 위치 (ms). Razor 분할 시 설정.
+    /// 예: 10초 영상을 5초에서 분할 → 우측 클립의 TrimStartMs = 5000
+    /// </summary>
+    [Browsable(false)]
+    public long TrimStartMs { get; set; }
+
     // 클립 색상 라벨 (DaVinci Resolve 스타일)
     [Category("표시")]
     [DisplayName("색상 라벨 (ARGB)")]

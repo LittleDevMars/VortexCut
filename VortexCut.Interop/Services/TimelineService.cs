@@ -181,6 +181,19 @@ public class TimelineService : IDisposable
     }
 
     /// <summary>
+    /// 비디오 클립 트림 설정 (Razor 분할 시 소스 오프셋 지정)
+    /// </summary>
+    public void SetVideoClipTrim(ulong trackId, ulong clipId, long trimStartMs, long trimEndMs)
+    {
+        ThrowIfDisposed();
+        ThrowIfNoTimeline();
+
+        int result = NativeMethods.timeline_set_video_clip_trim(
+            _timeline!.DangerousGetHandle(), trackId, clipId, trimStartMs, trimEndMs);
+        CheckError(result);
+    }
+
+    /// <summary>
     /// 타임라인 총 길이 가져오기 (ms)
     /// </summary>
     public long GetDuration()

@@ -97,6 +97,14 @@ public static class NativeMethods
     public static extern int timeline_remove_audio_clip(IntPtr timeline, ulong trackId, ulong clipId);
 
     /// <summary>
+    /// 비디오 클립 트림 설정 (Razor 분할용)
+    /// </summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int timeline_set_video_clip_trim(
+        IntPtr timeline, ulong trackId, ulong clipId,
+        long trimStartMs, long trimEndMs);
+
+    /// <summary>
     /// 타임라인 총 길이 가져오기
     /// </summary>
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]

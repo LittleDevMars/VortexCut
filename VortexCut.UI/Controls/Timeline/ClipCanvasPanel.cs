@@ -8,6 +8,7 @@ using System.Linq;
 using VortexCut.Core.Models;
 using VortexCut.UI.ViewModels;
 using VortexCut.UI.Services;
+using VortexCut.UI.Services.Actions;
 
 namespace VortexCut.UI.Controls.Timeline;
 
@@ -48,6 +49,7 @@ public class ClipCanvasPanel : Control
     private ClipEdge _trimEdge = ClipEdge.None;
     private long _originalStartTimeMs;
     private long _originalDurationMs;
+    private int _originalTrackIndex; // Undo용 원래 트랙 인덱스
 
     // 썸네일 스트립 서비스
     private ThumbnailStripService? _thumbnailStripService;
@@ -2067,6 +2069,7 @@ public class ClipCanvasPanel : Control
                         _dragStartPoint = point;
                         _originalStartTimeMs = _selectedClip.StartTimeMs;
                         _originalDurationMs = _selectedClip.DurationMs;
+                        if (_viewModel != null) _viewModel.IsEditing = true;
                         Cursor = new Cursor(StandardCursorType.SizeWestEast);
                     }
                     else
@@ -2075,6 +2078,9 @@ public class ClipCanvasPanel : Control
                         _isDragging = true;
                         _draggingClip = _selectedClip;
                         _dragStartPoint = point;
+                        _originalStartTimeMs = _selectedClip.StartTimeMs;
+                        _originalTrackIndex = _selectedClip.TrackIndex;
+                        if (_viewModel != null) _viewModel.IsEditing = true;
                     }
                 }
             }
@@ -2251,21 +2257,57 @@ public class ClipCanvasPanel : Control
             return;
         }
 
-        // 트림 종료
+        // 트림 종료 → Undo 기록 + Rust 동기화
         if (_isTrimming)
         {
+            if (_draggingClip != null && _viewModel != null)
+            {
+                // 실제 변경이 있었을 때만 기록
+                if (_draggingClip.StartTimeMs != _originalStartTimeMs || _draggingClip.DurationMs != _originalDurationMs)
+                {
+                    // Rust 동기화 (C# 모델은 드래그 중 이미 변경됨)
+                    _viewModel.ProjectServiceRef.SyncClipToRust(_draggingClip);
+
+                    var trimAction = new TrimClipAction(
+                        _draggingClip,
+                        _originalStartTimeMs, _originalDurationMs,
+                        _draggingClip.StartTimeMs, _draggingClip.DurationMs,
+                        _viewModel.ProjectServiceRef);
+                    _viewModel.UndoRedo.RecordAction(trimAction);
+                }
+            }
+
             _isTrimming = false;
             _trimEdge = ClipEdge.None;
             _draggingClip = null;
+            if (_viewModel != null) _viewModel.IsEditing = false;
             Cursor = Cursor.Default;
             e.Handled = true;
             return;
         }
 
-        // 클립 드래그 종료
+        // 클립 드래그 종료 → Undo 기록 + Rust 동기화
+        if (_isDragging && _draggingClip != null && _viewModel != null)
+        {
+            // 실제 변경이 있었을 때만 기록
+            if (_draggingClip.StartTimeMs != _originalStartTimeMs || _draggingClip.TrackIndex != _originalTrackIndex)
+            {
+                // Rust 동기화 (C# 모델은 드래그 중 이미 변경됨)
+                _viewModel.ProjectServiceRef.SyncClipToRust(_draggingClip);
+
+                var moveAction = new MoveClipAction(
+                    _draggingClip,
+                    _originalStartTimeMs, _originalTrackIndex,
+                    _draggingClip.StartTimeMs, _draggingClip.TrackIndex,
+                    _viewModel.ProjectServiceRef);
+                _viewModel.UndoRedo.RecordAction(moveAction);
+            }
+        }
+
         _isDragging = false;
         _draggingClip = null;
         _lastSnappedTimeMs = -1;
+        if (_viewModel != null) _viewModel.IsEditing = false;
         InvalidateVisual(); // Snap 가이드라인 제거
         e.Handled = true;
     }

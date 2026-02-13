@@ -107,6 +107,103 @@ public class ProjectService : IDisposable
     }
 
     /// <summary>
+    /// 비디오 클립 제거 (Undo용)
+    /// Razor 분할로 생성된 클립은 Rust에 없을 수 있으므로 FFI 실패 시 무시
+    /// </summary>
+    public void RemoveVideoClip(ulong clipId, ulong trackId = 0)
+    {
+        if (_currentProject == null) return;
+
+        var rustTrackId = trackId > 0 ? trackId : _defaultVideoTrackId;
+        try { _timelineService.RemoveVideoClip(rustTrackId, clipId); }
+        catch { /* Razor 분할 클립 등 Rust에 미등록 시 무시 */ }
+        _currentProject.Clips.RemoveAll(c => c.Id == clipId);
+    }
+
+    /// <summary>
+    /// 오디오 클립 제거 (Undo용)
+    /// </summary>
+    public void RemoveAudioClip(ulong clipId, ulong trackId)
+    {
+        if (_currentProject == null) return;
+
+        try { _timelineService.RemoveAudioClip(trackId, clipId); }
+        catch { /* Rust에 미등록 시 무시 */ }
+        _currentProject.Clips.RemoveAll(c => c.Id == clipId);
+    }
+
+    /// <summary>
+    /// 비디오 클립 재추가 (Redo/Undo용) — 새 Rust clipId 반환
+    /// _currentProject.Clips에도 추가하여 정합성 유지
+    /// </summary>
+    public ulong ReAddVideoClip(string filePath, long startTimeMs, long durationMs)
+    {
+        if (_currentProject == null)
+            throw new InvalidOperationException("No project is open");
+
+        var newId = _timelineService.AddVideoClip(_defaultVideoTrackId, filePath, startTimeMs, durationMs);
+        return newId;
+    }
+
+    /// <summary>
+    /// 클립을 Rust Timeline에 동기화 (remove + re-add + trim 설정)
+    /// 드래그/트림/Razor 후 C# 모델이 변경되었을 때 호출
+    /// 새 Rust clipId로 clip.Id 갱신
+    /// </summary>
+    public void SyncClipToRust(ClipModel clip)
+    {
+        if (_currentProject == null) return;
+
+        // _currentProject.Clips에서 기존 항목 제거 (ID로 찾기)
+        _currentProject.Clips.RemoveAll(c => c.Id == clip.Id);
+
+        // Rust에서 기존 클립 제거 (없으면 무시)
+        try { _timelineService.RemoveVideoClip(_defaultVideoTrackId, clip.Id); }
+        catch { }
+
+        // Rust에 새 클립 추가
+        var newId = _timelineService.AddVideoClip(
+            _defaultVideoTrackId, clip.FilePath, clip.StartTimeMs, clip.DurationMs);
+        clip.Id = newId;
+
+        // trim_start_ms가 0이 아닌 경우 Rust에 설정
+        if (clip.TrimStartMs > 0)
+        {
+            try
+            {
+                _timelineService.SetVideoClipTrim(
+                    _defaultVideoTrackId, newId,
+                    clip.TrimStartMs, clip.TrimStartMs + clip.DurationMs);
+            }
+            catch { }
+        }
+
+        // _currentProject.Clips에도 추가
+        _currentProject.Clips.Add(clip);
+    }
+
+    /// <summary>
+    /// 비디오 클립의 Rust trim 값 설정
+    /// </summary>
+    public void SetClipTrim(ulong clipId, long trimStartMs, long trimEndMs)
+    {
+        try
+        {
+            _timelineService.SetVideoClipTrim(_defaultVideoTrackId, clipId, trimStartMs, trimEndMs);
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// 렌더 캐시 클리어 (Undo/Redo 후 호출)
+    /// </summary>
+    public void ClearRenderCache()
+    {
+        try { _renderService.ClearCache(); }
+        catch { /* Renderer 미생성 시 무시 */ }
+    }
+
+    /// <summary>
     /// 특정 시간의 프레임 렌더링 (프레임 스킵 시 null 반환)
     /// </summary>
     public RenderedFrame? RenderFrame(long timestampMs)

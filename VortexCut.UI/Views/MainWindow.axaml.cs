@@ -5,6 +5,7 @@ using Avalonia.Input;
 using VortexCut.Core.Models;
 using VortexCut.UI.ViewModels;
 using VortexCut.UI.Services;
+using VortexCut.UI.Services.Actions;
 
 namespace VortexCut.UI.Views;
 
@@ -81,6 +82,31 @@ public partial class MainWindow : Window
 
         switch (e.Key)
         {
+            // Undo/Redo
+            case Key.Z:
+                if (isCtrl && isShift)
+                {
+                    // Ctrl+Shift+Z: Redo
+                    _viewModel.Timeline.Redo();
+                    e.Handled = true;
+                }
+                else if (isCtrl)
+                {
+                    // Ctrl+Z: Undo
+                    _viewModel.Timeline.Undo();
+                    e.Handled = true;
+                }
+                break;
+
+            case Key.Y:
+                if (isCtrl)
+                {
+                    // Ctrl+Y: Redo (대체 키)
+                    _viewModel.Timeline.Redo();
+                    e.Handled = true;
+                }
+                break;
+
             // 키프레임 & 마커
             case Key.K:
                 if (!isCtrl && !isShift)
@@ -332,11 +358,51 @@ public partial class MainWindow : Window
         if (_viewModel == null) return;
 
         var clipsToDelete = _viewModel.Timeline.SelectedClips.ToList();
-        foreach (var clip in clipsToDelete)
+        if (clipsToDelete.Count == 0) return;
+
+        if (_viewModel.Timeline.RippleModeEnabled)
         {
-            _viewModel.Timeline.Clips.Remove(clip);
+            // 리플 모드: RippleDeleteAction으로 처리
+            if (clipsToDelete.Count == 1)
+            {
+                var action = new RippleDeleteAction(
+                    _viewModel.Timeline.Clips, clipsToDelete[0], _viewModel.ProjectService);
+                _viewModel.Timeline.UndoRedo.ExecuteAction(action);
+            }
+            else
+            {
+                var actions = clipsToDelete
+                    .Select(c => (Core.Interfaces.IUndoableAction)new RippleDeleteAction(
+                        _viewModel.Timeline.Clips, c, _viewModel.ProjectService))
+                    .ToList();
+                var composite = new CompositeAction("리플 삭제 (다중)", actions);
+                _viewModel.Timeline.UndoRedo.ExecuteAction(composite);
+            }
         }
+        else
+        {
+            // 일반 모드: DeleteClipAction (FFI 연동)
+            if (clipsToDelete.Count == 1)
+            {
+                var action = new DeleteClipAction(
+                    _viewModel.Timeline.Clips,
+                    _viewModel.ProjectService,
+                    clipsToDelete[0]);
+                _viewModel.Timeline.UndoRedo.ExecuteAction(action);
+            }
+            else
+            {
+                var actions = clipsToDelete
+                    .Select(c => (Core.Interfaces.IUndoableAction)new DeleteClipAction(
+                        _viewModel.Timeline.Clips, _viewModel.ProjectService, c))
+                    .ToList();
+                var composite = new CompositeAction("클립 삭제 (다중)", actions);
+                _viewModel.Timeline.UndoRedo.ExecuteAction(composite);
+            }
+        }
+
         _viewModel.Timeline.SelectedClips.Clear();
+        _viewModel.Timeline.SelectedClip = null;
     }
 
     private void DuplicateSelectedClips()
@@ -344,20 +410,33 @@ public partial class MainWindow : Window
         if (_viewModel == null) return;
 
         var clipsToDuplicate = _viewModel.Timeline.SelectedClips.ToList();
+        if (clipsToDuplicate.Count == 0) return;
+
         _viewModel.Timeline.SelectedClips.Clear();
 
+        // 각 복제를 AddClipAction으로 처리
+        var actions = new List<Core.Interfaces.IUndoableAction>();
         foreach (var clip in clipsToDuplicate)
         {
-            var newClip = new Core.Models.ClipModel
-            {
-                Id = (ulong)Random.Shared.NextInt64(),
-                FilePath = clip.FilePath,
-                StartTimeMs = clip.EndTimeMs, // 원본 바로 뒤에 배치
-                DurationMs = clip.DurationMs,
-                TrackIndex = clip.TrackIndex
-            };
-            _viewModel.Timeline.Clips.Add(newClip);
-            _viewModel.Timeline.SelectedClips.Add(newClip);
+            var addAction = new AddClipAction(
+                _viewModel.Timeline.Clips,
+                _viewModel.ProjectService,
+                clip.FilePath,
+                clip.EndTimeMs, // 원본 바로 뒤에 배치
+                clip.DurationMs,
+                clip.TrackIndex,
+                clip.ProxyFilePath);
+            actions.Add(addAction);
+        }
+
+        if (actions.Count == 1)
+        {
+            _viewModel.Timeline.UndoRedo.ExecuteAction(actions[0]);
+        }
+        else
+        {
+            var composite = new CompositeAction("클립 복제 (다중)", actions);
+            _viewModel.Timeline.UndoRedo.ExecuteAction(composite);
         }
     }
 

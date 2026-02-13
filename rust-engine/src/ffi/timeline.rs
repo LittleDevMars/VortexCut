@@ -331,3 +331,35 @@ pub extern "C" fn timeline_get_video_clip_count(
         }
     }
 }
+
+/// 비디오 클립의 trim_start_ms 설정 (Razor 분할용)
+#[no_mangle]
+pub extern "C" fn timeline_set_video_clip_trim(
+    timeline: *mut std::ffi::c_void,
+    track_id: u64,
+    clip_id: u64,
+    trim_start_ms: i64,
+    trim_end_ms: i64,
+) -> i32 {
+    if timeline.is_null() {
+        return ERROR_NULL_PTR;
+    }
+
+    unsafe {
+        let timeline_arc = &*(timeline as *const Mutex<Timeline>);
+        let mut timeline = match timeline_arc.lock() {
+            Ok(t) => t,
+            Err(_) => return ERROR_INVALID_PARAM,
+        };
+
+        if let Some(track) = timeline.video_tracks.iter_mut().find(|t| t.id == track_id) {
+            if let Some(clip) = track.get_clip_by_id_mut(clip_id) {
+                clip.trim_start_ms = trim_start_ms;
+                clip.trim_end_ms = trim_end_ms;
+                return ERROR_SUCCESS;
+            }
+        }
+    }
+
+    ERROR_INVALID_PARAM
+}
