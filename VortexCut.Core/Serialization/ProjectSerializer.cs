@@ -78,6 +78,9 @@ public class MediaItemData
 
     [JsonPropertyName("fps")]
     public double Fps { get; set; }
+
+    [JsonPropertyName("proxyFilePath")]
+    public string? ProxyFilePath { get; set; }
 }
 
 /// <summary>

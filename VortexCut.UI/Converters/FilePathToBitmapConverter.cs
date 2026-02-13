@@ -14,14 +14,21 @@ public class FilePathToBitmapConverter : IValueConverter
 
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
-        if (value is string path && !string.IsNullOrEmpty(path) && System.IO.File.Exists(path))
+        if (value is string path && !string.IsNullOrEmpty(path))
         {
             try
             {
+                if (!System.IO.File.Exists(path))
+                {
+                    System.Diagnostics.Debug.WriteLine($"⚠️ FilePathToBitmapConverter: file not found: {path}");
+                    return null;
+                }
+
                 return new Bitmap(path);
             }
             catch
             {
+                System.Diagnostics.Debug.WriteLine($"⚠️ FilePathToBitmapConverter: failed to load bitmap: {path}");
                 return null;
             }
         }

@@ -95,10 +95,10 @@
             </StackPanel>
         </Border>
 
-        <!-- Loading State (미디어 임포트 중) -->
+        <!-- Loading State (미디어 임포트 중, 아직 미디어가 하나도 없을 때만 전체 오버레이) -->
         <Border x:Name="LoadingState"
                 Background="{StaticResource BgPanelBrush}"
-                IsVisible="{Binding IsLoading}">
+                IsVisible="{Binding ShowLoadingOverlay}">
             <StackPanel Spacing="12" Margin="12">
                 <!-- Skeleton Item 1 -->
                 <Border Padding="5" CornerRadius="2" Background="Transparent">

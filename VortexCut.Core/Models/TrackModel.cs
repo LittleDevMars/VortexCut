@@ -10,6 +10,32 @@ public enum TrackType
 }
 
 /// <summary>
+/// 클립 표시 모드 (DaVinci Resolve / Premiere Pro 스타일)
+/// </summary>
+public enum ClipDisplayMode
+{
+    /// <summary>연속 프레임 썸네일 (기본값)</summary>
+    Filmstrip,
+    /// <summary>시작/끝 프레임만 표시</summary>
+    Thumbnail,
+    /// <summary>클립 이름 + 단색 (최소)</summary>
+    Minimal
+}
+
+/// <summary>
+/// 오디오 파형 표시 모드 (Premiere Pro 참조)
+/// </summary>
+public enum WaveformDisplayMode
+{
+    /// <summary>반파 - 아래→위 방향 (Premiere 기본)</summary>
+    Rectified,
+    /// <summary>전파 - 중앙 기준 상하 대칭</summary>
+    NonRectified,
+    /// <summary>숨김</summary>
+    Hidden
+}
+
+/// <summary>
 /// 타임라인 트랙 모델
 /// </summary>
 public class TrackModel
@@ -63,4 +89,9 @@ public class TrackModel
     /// 트랙 높이 (픽셀 단위, 30~200px)
     /// </summary>
     public double Height { get; set; } = 60;
+
+    /// <summary>
+    /// 클립 표시 모드 (Filmstrip/Thumbnail/Minimal)
+    /// </summary>
+    public ClipDisplayMode DisplayMode { get; set; } = ClipDisplayMode.Filmstrip;
 }

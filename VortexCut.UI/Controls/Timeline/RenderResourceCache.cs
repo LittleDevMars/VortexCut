@@ -124,6 +124,111 @@ public static class RenderResourceCache
         new Pen(new SolidColorBrush(Color.FromRgb(255, 200, 80)).ToImmutable(), 2);
 
     // ============================================================
+    // TimelineHeader용 정적 리소스
+    // ============================================================
+
+    // 헤더 배경 그라디언트
+    public static readonly IBrush HeaderBgGradient = new LinearGradientBrush
+    {
+        StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+        EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+        GradientStops = new GradientStops
+        {
+            new GradientStop(Color.Parse("#3A3A3C"), 0),
+            new GradientStop(Color.Parse("#2D2D30"), 0.5),
+            new GradientStop(Color.Parse("#252527"), 1)
+        }
+    }.ToImmutable();
+
+    public static readonly IPen HeaderHighlightPen =
+        new Pen(new SolidColorBrush(Color.FromArgb(40, 255, 255, 255)).ToImmutable(), 1);
+
+    // 눈금 펜
+    public static readonly IPen MinorTickPen =
+        new Pen(new SolidColorBrush(Color.Parse("#555555")).ToImmutable(), 1);
+    public static readonly IPen MajorTickPen =
+        new Pen(new SolidColorBrush(Color.Parse("#999999")).ToImmutable(), 1.5);
+
+    // 줌바
+    public static readonly IBrush ZoomTrackBrush =
+        new SolidColorBrush(Color.FromArgb(180, 40, 40, 42)).ToImmutable();
+    public static readonly IPen ZoomTrackBorderPen =
+        new Pen(new SolidColorBrush(Color.FromArgb(150, 80, 80, 82)).ToImmutable(), 1);
+    public static readonly IBrush ZoomThumbBrush =
+        new SolidColorBrush(Color.FromRgb(200, 200, 200)).ToImmutable();
+    public static readonly IPen ZoomThumbBorderPen =
+        new Pen(new SolidColorBrush(Color.FromRgb(80, 220, 255)).ToImmutable(), 1.5);
+    public static readonly IBrush ZoomGlowBrush =
+        new SolidColorBrush(Color.FromArgb(40, 80, 220, 255)).ToImmutable();
+    public static readonly IBrush ZoomLabelBrush =
+        new SolidColorBrush(Color.FromArgb(180, 200, 200, 200)).ToImmutable();
+    public static readonly IBrush ZoomRangeBrush =
+        new SolidColorBrush(Color.FromArgb(150, 150, 150, 150)).ToImmutable();
+
+    // 줌바 채움 그라디언트
+    public static readonly IBrush ZoomFillGradient = new LinearGradientBrush
+    {
+        StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+        EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative),
+        GradientStops = new GradientStops
+        {
+            new GradientStop(Color.FromRgb(0, 122, 204), 0),
+            new GradientStop(Color.FromRgb(28, 151, 234), 0.5),
+            new GradientStop(Color.FromRgb(80, 220, 255), 1)
+        }
+    }.ToImmutable();
+
+    // 상태 정보 배경
+    public static readonly IBrush StatusInfoBgBrush =
+        new SolidColorBrush(Color.FromArgb(200, 35, 35, 38)).ToImmutable();
+    public static readonly IPen StatusInfoBorderPen =
+        new Pen(new SolidColorBrush(Color.FromArgb(150, 0, 122, 204)).ToImmutable(), 1);
+
+    // 헤더 Playhead
+    public static readonly IPen HeaderPlayheadPen =
+        new Pen(new SolidColorBrush(Color.FromRgb(255, 90, 0)).ToImmutable(), 2);
+    public static readonly IBrush HeaderPlayheadShadowBrush =
+        new SolidColorBrush(Color.FromArgb(120, 0, 0, 0)).ToImmutable();
+
+    // 헤더 Playhead 글로우 (재생 중 애니메이션)
+    public static readonly IPen HeaderPlayheadGlowPen =
+        new Pen(new SolidColorBrush(Color.FromArgb(80, 255, 90, 0)).ToImmutable(), 6);
+    public static readonly IPen HeaderPlayheadMidGlowPen =
+        new Pen(new SolidColorBrush(Color.FromArgb(120, 255, 90, 0)).ToImmutable(), 3);
+
+    // 헤더 Playhead 핸들 그라디언트 (주황색)
+    public static readonly IBrush HeaderPlayheadHandleGradient = new LinearGradientBrush
+    {
+        StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+        EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+        GradientStops = new GradientStops
+        {
+            new GradientStop(Color.FromRgb(255, 90, 0), 0),
+            new GradientStop(Color.FromRgb(205, 40, 0), 1)
+        }
+    }.ToImmutable();
+
+    // 시간 라벨 배경 (반투명)
+    public static readonly IBrush TimeLabelBgBrush =
+        new SolidColorBrush(Color.FromArgb(150, 45, 45, 48)).ToImmutable();
+
+    // 마커 툴팁 배경
+    public static readonly IBrush MarkerTooltipBgBrush =
+        new SolidColorBrush(Color.FromArgb(220, 40, 40, 40)).ToImmutable();
+
+    // In/Out 포인트
+    public static readonly IBrush InPointBrush =
+        new SolidColorBrush(Color.FromArgb(220, 92, 184, 92)).ToImmutable();
+    public static readonly IBrush OutPointBrush =
+        new SolidColorBrush(Color.FromArgb(220, 217, 83, 79)).ToImmutable();
+    public static readonly IBrush WorkAreaBrush =
+        new SolidColorBrush(Color.FromArgb(30, 0, 122, 204)).ToImmutable();
+
+    // 타입페이스 (SemiBold 추가)
+    public static readonly Typeface SegoeUISemiBold =
+        new Typeface("Segoe UI", FontStyle.Normal, FontWeight.SemiBold);
+
+    // ============================================================
     // 정적 타입페이스 (불변)
     // ============================================================
 

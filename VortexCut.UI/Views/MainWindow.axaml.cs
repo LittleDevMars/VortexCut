@@ -1,4 +1,5 @@
 using System.Linq;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using VortexCut.Core.Models;
@@ -202,6 +203,16 @@ public partial class MainWindow : Window
                     e.Handled = true;
                 }
                 break;
+
+            // 전역 Display Mode 순환
+            case Key.T:
+                if (isCtrl && isShift)
+                {
+                    // Ctrl+Shift+T: 전역 표시 모드 순환
+                    _viewModel.Timeline.CycleGlobalDisplayMode();
+                    e.Handled = true;
+                }
+                break;
         }
     }
 
@@ -358,6 +369,7 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
     private KeyframeSystem? GetCurrentKeyframeSystem(ClipModel clip)
     {
         if (_viewModel == null) return null;

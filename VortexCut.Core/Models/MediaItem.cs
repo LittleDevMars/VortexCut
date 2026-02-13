@@ -20,6 +20,11 @@ public class MediaItem
     // 오디오 메타데이터
     public int SampleRate { get; set; }
     public int Channels { get; set; }
+
+    /// <summary>
+    /// 프리뷰/Filmstrip용 저해상도 Proxy 파일 경로 (선택 사항)
+    /// </summary>
+    public string? ProxyFilePath { get; set; }
 }
 
 public enum MediaType

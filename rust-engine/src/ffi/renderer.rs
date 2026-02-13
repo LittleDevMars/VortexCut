@@ -28,7 +28,7 @@ pub extern "C" fn renderer_create(timeline: *mut c_void, out_renderer: *mut *mut
         let renderer_mutex = Box::new(Mutex::new(renderer));
         *out_renderer = Box::into_raw(renderer_mutex) as *mut c_void;
 
-        println!("✅ renderer_create: Renderer created with Mutex protection");
+        // 생성 완료
     }
 
     ErrorCode::Success as i32
@@ -44,7 +44,7 @@ pub extern "C" fn renderer_destroy(renderer: *mut c_void) -> i32 {
     unsafe {
         // Mutex<Renderer>를 Box로 다시 감싸서 drop
         let _ = Box::from_raw(renderer as *mut Mutex<Renderer>);
-        println!("✅ renderer_destroy: Renderer destroyed");
+        // 파괴 완료
     }
 
     ErrorCode::Success as i32
@@ -62,7 +62,7 @@ pub extern "C" fn renderer_render_frame(
 ) -> i32 {
     if renderer.is_null() || out_width.is_null() || out_height.is_null()
         || out_data.is_null() || out_data_size.is_null() {
-        println!("❌ renderer_render_frame: NULL pointer detected!");
+        // NULL 포인터
         return ErrorCode::NullPointer as i32;
     }
 
@@ -93,11 +93,40 @@ pub extern "C" fn renderer_render_frame(
                 ErrorCode::Success as i32
             }
             Err(e) => {
-                eprintln!("❌ renderer_render_frame failed at {}ms: {}", timestamp_ms, e);
-                ErrorCode::RenderFailed as i32
+                // 에러를 프레임 스킵으로 처리 (C# Exception 방지)
+                // render_frame Err는 Timeline lock poison 등 심각한 상황이지만,
+                // C#에서 Exception throw → 재생 영구 정지보다는
+                // 프레임 스킵(null) 반환이 더 안전
+                eprintln!("renderer_render_frame error at {}ms: {}", timestamp_ms, e);
+                *out_width = 0;
+                *out_height = 0;
+                *out_data = std::ptr::null_mut();
+                *out_data_size = 0;
+                ErrorCode::Success as i32
             }
         }
         // Mutex lock은 여기서 자동으로 해제됨 (MutexGuard drop)
+    }
+}
+
+/// 재생 모드 설정 (C# 재생 시작/정지 시 호출)
+/// playback=1: 재생 모드 (forward_threshold=5000ms, seek 대신 forward decode)
+/// playback=0: 스크럽 모드 (forward_threshold=100ms, 즉시 seek)
+#[no_mangle]
+pub extern "C" fn renderer_set_playback_mode(renderer: *mut c_void, playback: i32) -> i32 {
+    if renderer.is_null() {
+        return ErrorCode::NullPointer as i32;
+    }
+
+    unsafe {
+        let renderer_mutex = &*(renderer as *const Mutex<Renderer>);
+        match renderer_mutex.try_lock() {
+            Ok(mut r) => {
+                r.set_playback_mode(playback != 0);
+                ErrorCode::Success as i32
+            }
+            Err(_) => ErrorCode::Success as i32, // busy면 무시 (다음 프레임에서 적용)
+        }
     }
 }
 
@@ -182,19 +211,15 @@ pub extern "C" fn get_video_info(
         let c_str = CStr::from_ptr(file_path);
         let file_path_str = match c_str.to_str() {
             Ok(s) => s,
-            Err(e) => {
-                println!("❌ get_video_info: Invalid UTF-8: {}", e);
-                return ErrorCode::InvalidParam as i32;
-            }
+            Err(_) => return ErrorCode::InvalidParam as i32,
         };
 
         let path = PathBuf::from(file_path_str);
-        println!("📋 get_video_info: file={}", file_path_str);
 
         let decoder = match Decoder::open(&path) {
             Ok(d) => d,
             Err(e) => {
-                println!("❌ get_video_info: Failed to open decoder: {}", e);
+                eprintln!("get_video_info: Failed to open: {}", e);
                 return ErrorCode::Ffmpeg as i32;
             }
         };
@@ -203,15 +228,13 @@ pub extern "C" fn get_video_info(
         *out_width = decoder.width();
         *out_height = decoder.height();
         *out_fps = decoder.fps();
-
-        println!("✅ get_video_info: duration={}ms, {}x{}, fps={:.2}",
-                 decoder.duration_ms(), decoder.width(), decoder.height(), decoder.fps());
     }
 
     ErrorCode::Success as i32
 }
 
-/// 비디오 썸네일 생성 (스탠드얼론 함수)
+/// 비디오 썸네일 생성 (스탠드얼론 함수 - 레거시, 단일 프레임용)
+/// NOTE: 다수 썸네일 생성 시 thumbnail_session_* API 사용 권장
 #[no_mangle]
 pub extern "C" fn generate_video_thumbnail(
     file_path: *const c_char,
@@ -225,55 +248,42 @@ pub extern "C" fn generate_video_thumbnail(
 ) -> i32 {
     if file_path.is_null() || out_width.is_null() || out_height.is_null()
         || out_data.is_null() || out_data_size.is_null() {
-        println!("❌ generate_video_thumbnail: NULL pointer detected!");
         return ErrorCode::NullPointer as i32;
     }
 
     unsafe {
-        // C 문자열을 Rust 문자열로 변환
         let c_str = CStr::from_ptr(file_path);
         let file_path_str = match c_str.to_str() {
             Ok(s) => s,
-            Err(e) => {
-                println!("❌ generate_video_thumbnail: Invalid UTF-8: {}", e);
-                return ErrorCode::InvalidParam as i32;
-            }
+            Err(_) => return ErrorCode::InvalidParam as i32,
         };
 
         let path = PathBuf::from(file_path_str);
-        println!("📸 generate_video_thumbnail: file={}, timestamp={}ms, size={}x{}",
-                 file_path_str, timestamp_ms, thumb_width, thumb_height);
 
-        // 임시 Decoder 생성
+        // 임시 Decoder 생성 (단일 프레임이므로 960x540 기본 해상도)
         let mut decoder = match Decoder::open(&path) {
             Ok(d) => d,
             Err(e) => {
-                println!("❌ generate_video_thumbnail: Failed to open decoder: {}", e);
+                eprintln!("generate_video_thumbnail: Failed to open: {}", e);
                 return ErrorCode::Ffmpeg as i32;
             }
         };
 
-        // 썸네일 생성
         match decoder.generate_thumbnail(timestamp_ms, thumb_width, thumb_height) {
             Ok(frame) => {
-                println!("✅ generate_video_thumbnail: Thumbnail generated {}x{}, {} bytes",
-                         frame.width, frame.height, frame.data.len());
-
                 *out_width = frame.width;
                 *out_height = frame.height;
                 *out_data_size = frame.data.len();
 
-                // 데이터를 힙에 할당하고 포인터 반환
                 let data_box = frame.data.into_boxed_slice();
                 *out_data = Box::into_raw(data_box) as *mut u8;
 
                 ErrorCode::Success as i32
             }
             Err(e) => {
-                println!("❌ generate_video_thumbnail: Failed to generate thumbnail: {}", e);
+                eprintln!("generate_video_thumbnail: Failed at {}ms: {}", timestamp_ms, e);
                 ErrorCode::Ffmpeg as i32
             }
         }
-        // Decoder는 여기서 자동으로 drop됨
     }
 }

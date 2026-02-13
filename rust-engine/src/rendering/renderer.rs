@@ -128,6 +128,17 @@ pub struct Renderer {
     frame_cache: FrameCache,
     /// 마지막 성공 렌더링 프레임 (fallback용)
     last_rendered_frame: Option<RenderedFrame>,
+    /// 재생 모드: true일 때 forward_threshold를 5초로 올려 seek 대신 forward decode
+    /// false(스크럽)일 때는 기본값(66ms) 유지 → 즉시 seek으로 정확한 위치 도달
+    playback_mode: bool,
+    /// 진단 카운터 (매 30프레임마다 출력)
+    diag_total: u64,
+    diag_cache_hit: u64,
+    diag_decoded: u64,
+    diag_eof: u64,
+    diag_skipped: u64,
+    diag_no_clip: u64,
+    diag_error: u64,
 }
 
 /// 검은색 프레임 생성 (960x540)
@@ -151,11 +162,43 @@ impl Renderer {
             // 60프레임 캐시 (~120MB at 960x540 RGBA)
             frame_cache: FrameCache::new(60, 200 * 1024 * 1024),
             last_rendered_frame: None,
+            playback_mode: false,
+            diag_total: 0,
+            diag_cache_hit: 0,
+            diag_decoded: 0,
+            diag_eof: 0,
+            diag_skipped: 0,
+            diag_no_clip: 0,
+            diag_error: 0,
+        }
+    }
+
+    /// 재생 모드 설정: 재생 시작 시 true, 정지 시 false
+    /// 재생 모드: forward_threshold=5000ms (seek 대신 forward decode → 빠름)
+    /// 스크럽 모드: forward_threshold=기본값 (즉시 seek → 정확한 위치)
+    pub fn set_playback_mode(&mut self, playback: bool) {
+        self.playback_mode = playback;
+        let threshold = if playback { 5000 } else { 100 }; // 재생: 5초, 스크럽: 100ms
+        for decoder in self.decoder_cache.values_mut() {
+            decoder.set_forward_threshold(threshold);
+        }
+        if playback {
+            // 재생 시작 시 EOF 상태 디코더 정리 (forward decode 가능하도록)
+            let error_keys: Vec<String> = self.decoder_cache.iter()
+                .filter(|(_, d)| d.state() == crate::ffmpeg::DecoderState::Error)
+                .map(|(k, _)| k.clone())
+                .collect();
+            for key in error_keys {
+                self.decoder_cache.remove(&key);
+            }
         }
     }
 
     /// 특정 시간의 프레임 렌더링 (캐시 + DecodeResult 안전 처리)
     pub fn render_frame(&mut self, timestamp_ms: i64) -> Result<RenderedFrame, String> {
+        self.diag_total += 1;
+        let render_start = std::time::Instant::now();
+
         // Timeline 데이터 복사 (lock 최소화)
         let clips_to_render = {
             let timeline = self.timeline.lock()
@@ -180,6 +223,8 @@ impl Renderer {
 
         // 클립이 없으면 검은색 프레임 반환
         if clips_to_render.is_empty() {
+            self.diag_no_clip += 1;
+            self.print_diag_if_needed(timestamp_ms);
             return Ok(black_frame(timestamp_ms));
         }
 
@@ -187,20 +232,32 @@ impl Renderer {
         let (clip, source_time_ms) = &clips_to_render[0];
         let file_path = clip.file_path.to_string_lossy().to_string();
 
-        // 1단계: 캐시 조회
-        if let Some(cached) = self.frame_cache.get(&file_path, *source_time_ms) {
-            let mut frame = cached.clone();
+        // 1단계: 캐시 조회 (.cloned()로 즉시 소유권 획득 → 가변 참조 해제)
+        if let Some(mut frame) = self.frame_cache.get(&file_path, *source_time_ms).cloned() {
             frame.timestamp_ms = timestamp_ms;
+            self.diag_cache_hit += 1;
+            self.print_diag_if_needed(timestamp_ms);
             return Ok(frame);
         }
 
         // 2단계: 디코딩
+        let decode_start = std::time::Instant::now();
         let result = self.decode_clip_frame(clip, *source_time_ms);
+        let decode_elapsed = decode_start.elapsed().as_millis();
+
+        // 처음 10프레임 또는 50ms 이상 걸린 경우 로그
+        if self.diag_total <= 10 || decode_elapsed > 50 {
+            eprintln!(
+                "[RENDER] t={}ms src={}ms decode={}ms total_frames={}",
+                timestamp_ms, source_time_ms, decode_elapsed, self.diag_total
+            );
+        }
 
         match result {
             Ok(decode_result) => {
                 match decode_result {
                     DecodeResult::Frame(frame) => {
+                        self.diag_decoded += 1;
                         let rendered = RenderedFrame {
                             width: frame.width,
                             height: frame.height,
@@ -210,13 +267,18 @@ impl Renderer {
                         // 캐시에 저장
                         self.frame_cache.put(file_path, *source_time_ms, rendered.clone());
                         self.last_rendered_frame = Some(rendered.clone());
+                        self.print_diag_if_needed(timestamp_ms);
                         Ok(rendered)
                     }
                     DecodeResult::FrameSkipped => {
+                        self.diag_skipped += 1;
+                        self.print_diag_if_needed(timestamp_ms);
                         // 프레임 스킵 → 마지막 렌더링 프레임 반환 (재생 중단 방지)
                         Ok(self.last_rendered_frame.clone().unwrap_or_else(|| black_frame(timestamp_ms)))
                     }
                     DecodeResult::EndOfStream(frame) => {
+                        self.diag_eof += 1;
+                        self.print_diag_if_needed(timestamp_ms);
                         // EOF → 마지막 프레임 반환
                         let rendered = RenderedFrame {
                             width: frame.width,
@@ -228,12 +290,16 @@ impl Renderer {
                         Ok(rendered)
                     }
                     DecodeResult::EndOfStreamEmpty => {
+                        self.diag_eof += 1;
+                        self.print_diag_if_needed(timestamp_ms);
                         // EOF + 프레임 없음 → 검은 화면
                         Ok(self.last_rendered_frame.clone().unwrap_or_else(|| black_frame(timestamp_ms)))
                     }
                 }
             }
             Err(e) => {
+                self.diag_error += 1;
+                self.print_diag_if_needed(timestamp_ms);
                 eprintln!("Decode error at {}ms: {}", timestamp_ms, e);
                 // 에러 시에도 마지막 프레임 반환 (재생 중단 방지)
                 Ok(self.last_rendered_frame.clone().unwrap_or_else(|| black_frame(timestamp_ms)))
@@ -241,20 +307,65 @@ impl Renderer {
         }
     }
 
+    /// 진단 통계 출력 (30프레임=~1초마다)
+    fn print_diag_if_needed(&self, last_ts: i64) {
+        if self.diag_total % 30 == 0 {
+            eprintln!(
+                "[RENDER DIAG] t={}ms | total={} cache={} decode={} eof={} skip={} noclip={} err={}",
+                last_ts,
+                self.diag_total,
+                self.diag_cache_hit,
+                self.diag_decoded,
+                self.diag_eof,
+                self.diag_skipped,
+                self.diag_no_clip,
+                self.diag_error
+            );
+        }
+    }
+
     /// 클립의 프레임 디코딩 (DecodeResult 반환)
+    /// 에러 시 디코더 재생성 1회 재시도 (corrupted state 복구)
     fn decode_clip_frame(&mut self, clip: &VideoClip, source_time_ms: i64) -> Result<DecodeResult, String> {
         let file_path = clip.file_path.to_string_lossy().to_string();
 
-        // 디코더가 캐시에 없으면 생성
+        // Error 상태 디코더는 제거 후 재생성 (복구 불가능 상태 탈출)
+        if let Some(decoder) = self.decoder_cache.get(&file_path) {
+            if decoder.state() == crate::ffmpeg::DecoderState::Error {
+                eprintln!("[DECODER] Error state, recreating: {}", file_path);
+                self.decoder_cache.remove(&file_path);
+            }
+        }
+
+        // 디코더가 캐시에 없으면 생성 (현재 모드의 forward_threshold 적용)
+        let threshold = if self.playback_mode { 5000 } else { 100 };
         if !self.decoder_cache.contains_key(&file_path) {
-            let decoder = Decoder::open(&clip.file_path)?;
+            let mut decoder = Decoder::open(&clip.file_path)?;
+            decoder.set_forward_threshold(threshold);
             self.decoder_cache.insert(file_path.clone(), decoder);
         }
 
         let decoder = self.decoder_cache.get_mut(&file_path)
             .ok_or("Decoder not found in cache")?;
 
-        decoder.decode_frame(source_time_ms)
+        match decoder.decode_frame(source_time_ms) {
+            Ok(result) => Ok(result),
+            Err(e) => {
+                // 디코딩 에러 → 디코더 drop 후 재생성하여 1회 재시도
+                eprintln!("[DECODER] Decode error at {}ms: {}, recreating decoder", source_time_ms, e);
+                self.decoder_cache.remove(&file_path);
+
+                let mut new_decoder = Decoder::open(&clip.file_path)
+                    .map_err(|e2| format!("Decoder recreate failed: {}", e2))?;
+                new_decoder.set_forward_threshold(threshold);
+                self.decoder_cache.insert(file_path.clone(), new_decoder);
+
+                let decoder = self.decoder_cache.get_mut(&file_path)
+                    .ok_or("Decoder not found after recreate")?;
+
+                decoder.decode_frame(source_time_ms)
+            }
+        }
     }
 
     /// 캐시 클리어 (클립 편집 시 호출)

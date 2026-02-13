@@ -81,6 +81,25 @@ public partial class TimelineViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isPlaying = false;
 
+    // 프로젝트 FPS (SMPTE 타임코드용)
+    [ObservableProperty]
+    private int _projectFps = 30;
+
+    // 전역 클립 표시 모드 (개별 트랙 설정이 우선)
+    [ObservableProperty]
+    private ClipDisplayMode _globalDisplayMode = ClipDisplayMode.Filmstrip;
+
+    // 오디오 파형 표시 모드
+    [ObservableProperty]
+    private WaveformDisplayMode _waveformMode = WaveformDisplayMode.NonRectified;
+
+    // 현재 타임라인에서 화면에 보이는 시간 범위 (Visible Range)
+    [ObservableProperty]
+    private long _visibleStartMs = 0;
+
+    [ObservableProperty]
+    private long _visibleEndMs = 0;
+
     public RazorTool? RazorTool { get; private set; }
     public RippleEditService? RippleEditService { get; private set; }
     public LinkClipService? LinkClipService { get; private set; }
@@ -100,12 +119,12 @@ public partial class TimelineViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 기본 트랙 초기화 (8개 비디오 + 4개 오디오)
+    /// 기본 트랙 초기화 (6개 비디오 + 4개 오디오)
     /// </summary>
     private void InitializeDefaultTracks()
     {
-        // 8개 비디오 트랙
-        for (int i = 0; i < 8; i++)
+        // 6개 비디오 트랙
+        for (int i = 0; i < 6; i++)
         {
             AddVideoTrack();
         }
@@ -120,7 +139,7 @@ public partial class TimelineViewModel : ViewModelBase
     /// <summary>
     /// 비디오 파일 추가
     /// </summary>
-    public async Task AddVideoClipAsync(string filePath)
+    public async Task AddVideoClipAsync(string filePath, string? proxyFilePath = null)
     {
         System.Diagnostics.Debug.WriteLine($"🎬 AddVideoClipAsync START: {filePath}");
         System.Diagnostics.Debug.WriteLine($"   CurrentTimeMs: {CurrentTimeMs}, Clips.Count: {Clips.Count}");
@@ -140,7 +159,7 @@ public partial class TimelineViewModel : ViewModelBase
             }
 
             System.Diagnostics.Debug.WriteLine($"   Calling _projectService.AddVideoClip...");
-            var clip = _projectService.AddVideoClip(filePath, CurrentTimeMs, durationMs);
+            var clip = _projectService.AddVideoClip(filePath, CurrentTimeMs, durationMs, 0, proxyFilePath);
             System.Diagnostics.Debug.WriteLine($"   ✅ Clip created: ID={clip.Id}, StartTimeMs={clip.StartTimeMs}, DurationMs={clip.DurationMs}, TrackIndex={clip.TrackIndex}");
 
             // UI 스레드에서 실행
@@ -160,7 +179,12 @@ public partial class TimelineViewModel : ViewModelBase
     /// </summary>
     public void AddClipFromMediaItem(MediaItem mediaItem, long startTimeMs, int trackIndex)
     {
-        var clip = _projectService.AddVideoClip(mediaItem.FilePath, startTimeMs, mediaItem.DurationMs, trackIndex);
+        var clip = _projectService.AddVideoClip(
+            mediaItem.FilePath,
+            startTimeMs,
+            mediaItem.DurationMs,
+            trackIndex,
+            mediaItem.ProxyFilePath);
         Clips.Add(clip);
     }
 
@@ -185,6 +209,11 @@ public partial class TimelineViewModel : ViewModelBase
     {
         if (SelectedClip != null)
         {
+            // 삭제 전 구간 정보 저장 (썸네일 캐시 무효화용)
+            long deletedStart = SelectedClip.StartTimeMs;
+            long deletedEnd = SelectedClip.EndTimeMs;
+            string deletedPath = SelectedClip.FilePath;
+
             if (RippleModeEnabled && RippleEditService != null)
             {
                 // 리플 모드: 삭제 후 이후 클립 자동 이동
@@ -196,6 +225,11 @@ public partial class TimelineViewModel : ViewModelBase
                 Clips.Remove(SelectedClip);
             }
             SelectedClip = null;
+
+            // TODO: ThumbnailStripService.InvalidateRange 호출 연결은
+            // TimelineCanvas/ClipCanvasPanel에서 ThumbnailStripService 인스턴스를
+            // 주입받아 처리하거나, 중앙 이벤트 허브를 통해 위임할 수 있다.
+            // 여기서는 삭제된 구간 정보를 보존하는 것까지만 담당한다.
         }
     }
 
@@ -212,7 +246,7 @@ public partial class TimelineViewModel : ViewModelBase
             Index = VideoTracks.Count,
             Type = TrackType.Video,
             Name = $"V{VideoTracks.Count + 1}",
-            ColorArgb = 0xFF0000FF // Blue
+            ColorArgb = 0xFF5DA8E8 // 밝은 블루
         };
         VideoTracks.Add(track);
     }
@@ -230,7 +264,7 @@ public partial class TimelineViewModel : ViewModelBase
             Index = AudioTracks.Count,
             Type = TrackType.Audio,
             Name = $"A{AudioTracks.Count + 1}",
-            ColorArgb = 0xFF00FF00 // Green
+            ColorArgb = 0xFF6CCB6C // 밝은 그린
         };
         AudioTracks.Add(track);
     }
@@ -370,5 +404,27 @@ public partial class TimelineViewModel : ViewModelBase
     {
         IsPlaying = !IsPlaying;
         // TODO: 실제 재생 로직 구현 (PreviewViewModel과 연동)
+    }
+
+    /// <summary>
+    /// 전역 클립 표시 모드 순환 (Ctrl+Shift+T)
+    /// 모든 트랙을 동일 모드로 일괄 변경
+    /// </summary>
+    [RelayCommand]
+    public void CycleGlobalDisplayMode()
+    {
+        GlobalDisplayMode = GlobalDisplayMode switch
+        {
+            ClipDisplayMode.Filmstrip => ClipDisplayMode.Thumbnail,
+            ClipDisplayMode.Thumbnail => ClipDisplayMode.Minimal,
+            ClipDisplayMode.Minimal => ClipDisplayMode.Filmstrip,
+            _ => ClipDisplayMode.Filmstrip
+        };
+
+        // 모든 트랙에 적용
+        foreach (var track in VideoTracks)
+            track.DisplayMode = GlobalDisplayMode;
+        foreach (var track in AudioTracks)
+            track.DisplayMode = GlobalDisplayMode;
     }
 }

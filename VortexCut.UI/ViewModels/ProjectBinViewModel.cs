@@ -25,12 +25,20 @@ public partial class ProjectBinViewModel : ViewModelBase
     public bool IsEmpty => MediaItems.Count == 0 && !IsLoading;
 
     /// <summary>
+    /// 전체 오버레이 형태의 로딩 UI를 보여줄지 여부.
+    /// - true  : 아직 미디어가 하나도 없고, 첫 임포트가 진행 중일 때만
+    /// - false : 이미 미디어가 하나 이상 있으면, 임포트 중이어도 기존 썸네일은 그대로 노출
+    /// </summary>
+    public bool ShowLoadingOverlay => MediaItems.Count == 0 && IsLoading;
+
+    /// <summary>
     /// 미디어 아이템 추가
     /// </summary>
     public void AddMediaItem(MediaItem item)
     {
         MediaItems.Add(item);
         OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(ShowLoadingOverlay));
     }
 
     /// <summary>
@@ -54,6 +62,7 @@ public partial class ProjectBinViewModel : ViewModelBase
         MediaItems.Clear();
         SelectedItem = null;
         OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(ShowLoadingOverlay));
     }
 
     /// <summary>
@@ -63,5 +72,6 @@ public partial class ProjectBinViewModel : ViewModelBase
     {
         IsLoading = loading;
         OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(ShowLoadingOverlay));
     }
 }

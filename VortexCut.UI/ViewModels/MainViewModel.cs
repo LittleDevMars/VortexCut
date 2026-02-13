@@ -18,6 +18,7 @@ namespace VortexCut.UI.ViewModels;
 public partial class MainViewModel : ViewModelBase
 {
     private readonly ProjectService _projectService;
+    private readonly ProxyService _proxyService;
     private IStorageProvider? _storageProvider;
     private ToastService? _toastService;
     private bool _isInitialized = false;
@@ -38,6 +39,7 @@ public partial class MainViewModel : ViewModelBase
     public MainViewModel()
     {
         _projectService = new ProjectService();
+        _proxyService = new ProxyService();
         _projectBin = new ProjectBinViewModel();
         _timeline = new TimelineViewModel(_projectService);
         _preview = new PreviewViewModel(_projectService);
@@ -153,7 +155,7 @@ public partial class MainViewModel : ViewModelBase
                 var filePath = file.Path.LocalPath;
                 var fileName = Path.GetFileName(filePath);
 
-                // 썸네일 생성 및 저장
+                // 썸네일 생성 및 저장 (0ms 한 장, 세션 엔진과는 독립적인 간단 경로)
                 string? thumbnailPath = null;
                 try
                 {
@@ -181,6 +183,17 @@ public partial class MainViewModel : ViewModelBase
                     System.Diagnostics.Debug.WriteLine($"GetVideoInfo failed for {fileName}: {ex.Message}");
                 }
 
+                // Proxy 비디오 생성 (실패 시 null, 원본만 사용)
+                string? proxyPath = null;
+                try
+                {
+                    proxyPath = await _proxyService.CreateProxyAsync(filePath);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"ProxyService failed for {fileName}: {ex.Message}");
+                }
+
                 // Project Bin에 추가
                 var mediaItem = new MediaItem
                 {
@@ -191,7 +204,8 @@ public partial class MainViewModel : ViewModelBase
                     Width = width,
                     Height = height,
                     Fps = fps,
-                    ThumbnailPath = thumbnailPath
+                    ThumbnailPath = thumbnailPath,
+                    ProxyFilePath = proxyPath
                 };
 
                 ProjectBin.AddMediaItem(mediaItem);
@@ -199,8 +213,8 @@ public partial class MainViewModel : ViewModelBase
                 // 첫 번째 파일은 타임라인에도 자동 추가
                 if (fileIndex == 0)
                 {
-                    await Timeline.AddVideoClipAsync(filePath);
-                    await Preview.RenderFrameAsync(0);
+                    await Timeline.AddVideoClipAsync(filePath, proxyPath);
+                    Preview.RenderFrameAsync(0);
                 }
 
                 fileIndex++;

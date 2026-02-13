@@ -72,7 +72,7 @@ public class ProjectService : IDisposable
     /// <summary>
     /// 비디오 클립 추가
     /// </summary>
-    public ClipModel AddVideoClip(string filePath, long startTimeMs, long durationMs, int trackIndex = 0)
+    public ClipModel AddVideoClip(string filePath, long startTimeMs, long durationMs, int trackIndex = 0, string? proxyFilePath = null)
     {
         if (_currentProject == null)
             throw new InvalidOperationException("No project is open");
@@ -92,7 +92,10 @@ public class ProjectService : IDisposable
 
         System.Diagnostics.Debug.WriteLine($"   📊 Timeline state: videoTracks={videoTrackCount}, audioTracks={audioTrackCount}, clipCount={clipCount}, duration={duration}ms");
 
-        var clip = new ClipModel(clipId, filePath, startTimeMs, durationMs, trackIndex);
+        var clip = new ClipModel(clipId, filePath, startTimeMs, durationMs, trackIndex)
+        {
+            ProxyFilePath = proxyFilePath
+        };
         _currentProject.Clips.Add(clip);
 
         return clip;
@@ -105,6 +108,15 @@ public class ProjectService : IDisposable
     {
         var frame = _renderService.RenderFrame(timestampMs);
         return frame;
+    }
+
+    /// <summary>
+    /// 재생 모드 전환 (재생 시작 시 true, 정지 시 false)
+    /// </summary>
+    public void SetPlaybackMode(bool playback)
+    {
+        try { _renderService.SetPlaybackMode(playback); }
+        catch { /* Renderer 미생성 시 무시 */ }
     }
 
     /// <summary>
@@ -280,7 +292,8 @@ public class ProjectService : IDisposable
         DurationMs = item.DurationMs,
         Width = item.Width,
         Height = item.Height,
-        Fps = item.Fps
+        Fps = item.Fps,
+        ProxyFilePath = item.ProxyFilePath
     };
 
     private static MediaItem DtoToMediaItem(MediaItemData data) => new()
@@ -291,7 +304,8 @@ public class ProjectService : IDisposable
         DurationMs = data.DurationMs,
         Width = data.Width,
         Height = data.Height,
-        Fps = data.Fps
+        Fps = data.Fps,
+        ProxyFilePath = data.ProxyFilePath
     };
 
     private static TrackData TrackToDto(TrackModel track) => new()

@@ -52,6 +52,9 @@ public class ClipCanvasPanel : Control
     // 썸네일 스트립 서비스
     private ThumbnailStripService? _thumbnailStripService;
 
+    // 오디오 파형 서비스
+    private AudioWaveformService? _audioWaveformService;
+
     // 키프레임 드래그 상태
     private Keyframe? _draggingKeyframe;
     private KeyframeSystem? _draggingKeyframeSystem;
@@ -133,7 +136,7 @@ public class ClipCanvasPanel : Control
 
     public void SetZoom(double pixelsPerMs)
     {
-        _pixelsPerMs = Math.Clamp(pixelsPerMs, 0.01, 5.0); // 최대 500%까지 확대
+        _pixelsPerMs = Math.Clamp(pixelsPerMs, 0.001, 5.0); // 최대 5000%까지 확대
         InvalidateVisual();
     }
 
@@ -146,6 +149,11 @@ public class ClipCanvasPanel : Control
     public void SetThumbnailService(ThumbnailStripService service)
     {
         _thumbnailStripService = service;
+    }
+
+    public void SetAudioWaveformService(AudioWaveformService service)
+    {
+        _audioWaveformService = service;
     }
 
     public override void Render(DrawingContext context)
@@ -298,6 +306,12 @@ public class ClipCanvasPanel : Control
             }
 
             context.DrawRectangle(RenderResourceCache.TrackBorderPen, trackRect);
+
+            // Lock된 트랙 빗금 오버레이
+            if (track.IsLocked)
+            {
+                DrawLockedTrackOverlay(context, trackRect);
+            }
         }
 
         // 비디오/오디오 트랙 경계 구분선
@@ -368,6 +382,32 @@ public class ClipCanvasPanel : Control
             }
 
             context.DrawRectangle(RenderResourceCache.TrackBorderPen, trackRect);
+
+            // Lock된 트랙 빗금 오버레이
+            if (track.IsLocked)
+            {
+                DrawLockedTrackOverlay(context, trackRect);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Lock된 트랙 배경 빗금 오버레이 (DaVinci Resolve 스타일)
+    /// </summary>
+    private void DrawLockedTrackOverlay(DrawingContext context, Rect trackRect)
+    {
+        // 반투명 어두운 오버레이
+        context.FillRectangle(
+            RenderResourceCache.GetSolidBrush(Color.FromArgb(40, 0, 0, 0)),
+            trackRect);
+
+        // 희미한 대각선 빗금 (12px 간격)
+        var lockStripePen = RenderResourceCache.GetPen(Color.FromArgb(30, 180, 180, 180), 1);
+        for (double sx = trackRect.Left - trackRect.Height; sx < trackRect.Right; sx += 12)
+        {
+            context.DrawLine(lockStripePen,
+                new Point(sx, trackRect.Bottom),
+                new Point(sx + trackRect.Height, trackRect.Top));
         }
     }
 
@@ -379,13 +419,23 @@ public class ClipCanvasPanel : Control
         long visibleStartMs = XToTime(-50);
         long visibleEndMs = XToTime(Bounds.Width + 50);
 
+        // ViewModel에 Visible Range 전달 (타임라인 전체 기준)
+        if (_viewModel != null &&
+            (_viewModel.VisibleStartMs != visibleStartMs || _viewModel.VisibleEndMs != visibleEndMs))
+        {
+            _viewModel.VisibleStartMs = visibleStartMs;
+            _viewModel.VisibleEndMs = visibleEndMs;
+        }
+
         // 50개 이상 visible 클립 시 LOD 강제 하향 (성능)
         int visibleClipCount = 0;
         foreach (var clip in _clips)
         {
             long clipEnd = clip.StartTimeMs + clip.DurationMs;
             if (clipEnd >= visibleStartMs && clip.StartTimeMs <= visibleEndMs)
+            {
                 visibleClipCount++;
+            }
         }
         bool forceLowLOD = visibleClipCount > 50;
 
@@ -396,6 +446,17 @@ public class ClipCanvasPanel : Control
             // viewport 밖 클립 스킵
             if (clipEndMs < visibleStartMs || clip.StartTimeMs > visibleEndMs)
                 continue;
+
+            // 썸네일 서비스에 이 클립의 로컬 Visible Range 힌트 전달
+            if (_thumbnailStripService != null && clip.DurationMs > 0)
+            {
+                long localStart = Math.Max(0, visibleStartMs - clip.StartTimeMs);
+                long localEnd = Math.Min(clip.DurationMs, visibleEndMs - clip.StartTimeMs);
+                if (localEnd > 0 && localStart < clip.DurationMs)
+                {
+                    _thumbnailStripService.UpdateVisibleRange(clip.FilePath, localStart, localEnd);
+                }
+            }
 
             bool isSelected = _viewModel?.SelectedClips.Contains(clip) ?? false;
             bool isHovered = clip == _hoveredClip;
@@ -435,6 +496,11 @@ public class ClipCanvasPanel : Control
         // LOD 결정 (50개 초과 시 Full → Medium 강제 하향)
         var lod = GetClipLOD(clipRect.Width);
         if (forceLowLOD && lod == ClipLOD.Full) lod = ClipLOD.Medium;
+
+        // DisplayMode 오버라이드: Minimal → 항상 Minimal LOD
+        var displayMode = track.DisplayMode;
+        if (displayMode == ClipDisplayMode.Minimal)
+            lod = ClipLOD.Minimal;
 
         // 드래그 중인 클립 감지
         bool isDragging = _isDragging && clip == _draggingClip;
@@ -511,6 +577,24 @@ public class ClipCanvasPanel : Control
             {
                 context.DrawRectangle(RenderResourceCache.ClipBorderMinimalSelected, clipRect);
             }
+
+            // DisplayMode.Minimal: 클립 이름 표시 (LOD Minimal과 달리 이름은 보여줌)
+            if (displayMode == ClipDisplayMode.Minimal && width > 30)
+            {
+                var fileName = System.IO.Path.GetFileNameWithoutExtension(clip.FilePath);
+                if (fileName.Length > 12) fileName = fileName.Substring(0, 9) + "...";
+                var minText = new FormattedText(
+                    fileName,
+                    System.Globalization.CultureInfo.CurrentCulture,
+                    FlowDirection.LeftToRight,
+                    RenderResourceCache.SegoeUIBold,
+                    10,
+                    RenderResourceCache.WhiteBrush);
+                context.DrawText(minText, new Point(x + 4, y + 7));
+                context.DrawRectangle(
+                    isSelected ? RenderResourceCache.ClipBorderMediumSelected : RenderResourceCache.ClipBorderMediumNormal,
+                    clipRect);
+            }
             return;
         }
 
@@ -522,15 +606,24 @@ public class ClipCanvasPanel : Control
             context.FillRectangle(gradientBrush, clipRect);
 
             // 비디오 클립 썸네일 (Medium LOD에서도 표시)
-            if (!isAudioClip && _thumbnailStripService != null)
+            if (!isAudioClip && _thumbnailStripService != null && displayMode != ClipDisplayMode.Thumbnail)
             {
+                // Filmstrip: 연속 썸네일 (Proxy가 있으면 Proxy 우선 사용)
                 var tier = ThumbnailStripService.GetTierForZoom(_pixelsPerMs);
+                var previewPath = string.IsNullOrEmpty(clip.ProxyFilePath)
+                    ? clip.FilePath
+                    : clip.ProxyFilePath;
                 var strip = _thumbnailStripService.GetOrRequestStrip(
-                    clip.FilePath, clip.DurationMs, tier);
+                    previewPath, clip.DurationMs, tier);
                 if (strip?.Thumbnails.Count > 0)
                 {
                     DrawThumbnailStrip(context, strip, clipRect, clip);
                 }
+            }
+            else if (!isAudioClip && _thumbnailStripService != null && displayMode == ClipDisplayMode.Thumbnail)
+            {
+                // Thumbnail: 시작/끝 프레임만
+                DrawHeadTailThumbnails(context, clip, clipRect);
             }
 
             var medBorderPen = isSelected
@@ -583,16 +676,25 @@ public class ClipCanvasPanel : Control
         context.FillRectangle(gradientBrush, clipRect);
 
         // 비디오 클립 + LOD Full/Medium일 때 썸네일 렌더링
-        if (!isAudioClip && _thumbnailStripService != null)
+        if (!isAudioClip && _thumbnailStripService != null && displayMode != ClipDisplayMode.Thumbnail)
         {
+            // Filmstrip: 연속 썸네일 (Proxy가 있으면 Proxy 우선 사용)
             var tier = ThumbnailStripService.GetTierForZoom(_pixelsPerMs);
+            var previewPath = string.IsNullOrEmpty(clip.ProxyFilePath)
+                ? clip.FilePath
+                : clip.ProxyFilePath;
             var strip = _thumbnailStripService.GetOrRequestStrip(
-                clip.FilePath, clip.DurationMs, tier);
+                previewPath, clip.DurationMs, tier);
 
             if (strip?.Thumbnails.Count > 0)
             {
                 DrawThumbnailStrip(context, strip, clipRect, clip);
             }
+        }
+        else if (!isAudioClip && _thumbnailStripService != null && displayMode == ClipDisplayMode.Thumbnail)
+        {
+            // Thumbnail: 시작/끝 프레임만
+            DrawHeadTailThumbnails(context, clip, clipRect);
         }
 
         // 색상 라벨 (DaVinci Resolve 스타일 - 클립 상단에 얇은 바)
@@ -672,10 +774,10 @@ public class ClipCanvasPanel : Control
             context.FillRectangle(RenderResourceCache.HoverBrush, hoverRect);
         }
 
-        // 오디오 웨이브폼 (간단한 시뮬레이션)
+        // 오디오 웨이브폼 (실제 파형 데이터 또는 시뮬레이션)
         if (isAudioClip && width > 50)
         {
-            DrawAudioWaveform(context, clipRect);
+            DrawAudioWaveform(context, clipRect, clip);
         }
 
         // 테두리 (선택된 클립은 밝은 하얀색, 일반은 미묘한 회색)
@@ -823,6 +925,43 @@ public class ClipCanvasPanel : Control
             }
         }
 
+        // Lock된 트랙 오버레이 (빗금 + 자물쇠 아이콘)
+        if (track.IsLocked)
+        {
+            // 빗금 패턴 (밝은 회색, Mute보다 눈에 띄게)
+            var lockStripesPen = RenderResourceCache.GetPen(Color.FromArgb(80, 200, 200, 200), 1);
+            for (double stripeX = clipRect.Left; stripeX < clipRect.Right + clipRect.Height; stripeX += 6)
+            {
+                context.DrawLine(lockStripesPen,
+                    new Point(stripeX, clipRect.Top),
+                    new Point(stripeX - clipRect.Height, clipRect.Bottom));
+            }
+
+            // 반투명 오버레이
+            context.FillRectangle(
+                RenderResourceCache.GetSolidBrush(Color.FromArgb(60, 30, 30, 30)),
+                clipRect);
+
+            // 자물쇠 아이콘 (중앙)
+            if (width > 40 && height > 25)
+            {
+                double lockX = clipRect.X + clipRect.Width / 2;
+                double lockY = clipRect.Y + clipRect.Height / 2;
+
+                // 자물쇠 몸체 (사각형)
+                var bodyRect = new Rect(lockX - 6, lockY - 2, 12, 10);
+                context.FillRectangle(
+                    RenderResourceCache.GetSolidBrush(Color.FromArgb(200, 0, 122, 204)),
+                    bodyRect);
+
+                // 자물쇠 고리 (아치)
+                var archPen = RenderResourceCache.GetPen(Color.FromArgb(200, 0, 122, 204), 2);
+                context.DrawLine(archPen, new Point(lockX - 4, lockY - 2), new Point(lockX - 4, lockY - 6));
+                context.DrawLine(archPen, new Point(lockX + 4, lockY - 2), new Point(lockX + 4, lockY - 6));
+                context.DrawLine(archPen, new Point(lockX - 4, lockY - 6), new Point(lockX + 4, lockY - 6));
+            }
+        }
+
         // 키프레임 렌더링 (선택된 클립만)
         if (isSelected && _viewModel != null)
         {
@@ -831,20 +970,182 @@ public class ClipCanvasPanel : Control
     }
 
     /// <summary>
-    /// 오디오 웨이브폼 렌더링 (DaVinci Resolve 스타일 - 고밀도)
+    /// Thumbnail 모드: 시작/끝 프레임만 표시 (Premiere Pro 스타일)
     /// </summary>
-    private void DrawAudioWaveform(DrawingContext context, Rect clipRect)
+    private void DrawHeadTailThumbnails(DrawingContext context, ClipModel clip, Rect clipRect)
     {
-        const int SampleInterval = 2; // 2픽셀마다 샘플 (고밀도)
-        const double MaxAmplitude = 0.42; // 클립 높이의 42%
+        if (_thumbnailStripService == null) return;
 
+        var tier = ThumbnailStripService.GetTierForZoom(_pixelsPerMs);
+        // Proxy가 있으면 Proxy 우선 사용
+        var previewPath = string.IsNullOrEmpty(clip.ProxyFilePath)
+            ? clip.FilePath
+            : clip.ProxyFilePath;
+        var strip = _thumbnailStripService.GetOrRequestStrip(
+            previewPath, clip.DurationMs, tier);
+
+        if (strip == null || strip.Thumbnails.Count == 0) return;
+
+        double thumbWidth = clipRect.Height * 1.5; // 16:9 비율 근사
+        if (thumbWidth > clipRect.Width / 2) thumbWidth = clipRect.Width / 2;
+
+        // 시작 프레임 (첫 번째 썸네일)
+        var firstThumb = strip.Thumbnails[0];
+        if (firstThumb?.Bitmap != null)
+        {
+            var headRect = new Rect(clipRect.X, clipRect.Y, thumbWidth, clipRect.Height);
+            using (context.PushClip(headRect))
+            {
+                context.DrawImage(firstThumb.Bitmap, headRect);
+            }
+        }
+
+        // 끝 프레임 (마지막 썸네일)
+        if (strip.Thumbnails.Count > 1 && clipRect.Width > thumbWidth * 2 + 10)
+        {
+            var lastThumb = strip.Thumbnails[strip.Thumbnails.Count - 1];
+            if (lastThumb?.Bitmap != null)
+            {
+                var tailRect = new Rect(
+                    clipRect.Right - thumbWidth, clipRect.Y,
+                    thumbWidth, clipRect.Height);
+                using (context.PushClip(tailRect))
+                {
+                    context.DrawImage(lastThumb.Bitmap, tailRect);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// 오디오 웨이브폼 렌더링 (DaVinci Resolve 스타일)
+    /// 실제 파형 데이터가 있으면 사용, 없으면 시뮬레이션 fallback
+    /// </summary>
+    private void DrawAudioWaveform(DrawingContext context, Rect clipRect, ClipModel clip)
+    {
         var centerY = clipRect.Top + clipRect.Height / 2;
-        var random = new System.Random((int)clipRect.X); // 일관된 랜덤 시드
 
-        // DaVinci Resolve 스타일 수직 바 렌더링
+        // 실제 파형 데이터 조회
+        WaveformData? waveform = null;
+        if (_audioWaveformService != null && !string.IsNullOrEmpty(clip.FilePath))
+        {
+            waveform = _audioWaveformService.GetOrRequestWaveform(clip.FilePath, clip.DurationMs);
+        }
+
+        // WaveformDisplayMode 확인
+        var waveformMode = _viewModel?.WaveformMode ?? WaveformDisplayMode.NonRectified;
+        if (waveformMode == WaveformDisplayMode.Hidden) return;
+
+        if (waveform != null && waveform.IsComplete && waveform.Peaks.Length > 0)
+        {
+            // === 실제 파형 렌더링 ===
+            DrawRealWaveform(context, clipRect, clip, waveform, centerY, waveformMode);
+        }
+        else
+        {
+            // === 시뮬레이션 fallback (데이터 로딩 중) ===
+            DrawSimulatedWaveform(context, clipRect, centerY);
+        }
+
+        // 중앙선 (가이드라인) - Rectified 모드에서는 하단에 표시
+        if (waveformMode == WaveformDisplayMode.Rectified)
+        {
+            double baseY = clipRect.Bottom - 2;
+            context.DrawLine(RenderResourceCache.WaveformCenterPen,
+                new Point(clipRect.Left, baseY),
+                new Point(clipRect.Right, baseY));
+        }
+        else
+        {
+            context.DrawLine(RenderResourceCache.WaveformCenterPen,
+                new Point(clipRect.Left, centerY),
+                new Point(clipRect.Right, centerY));
+        }
+    }
+
+    /// <summary>
+    /// 실제 오디오 피크 데이터 기반 파형 렌더링
+    /// </summary>
+    private void DrawRealWaveform(
+        DrawingContext context, Rect clipRect, ClipModel clip,
+        WaveformData waveform, double centerY, WaveformDisplayMode mode)
+    {
+        const double MaxAmplitude = 0.42; // 클립 높이의 42%
+        double halfHeight = clipRect.Height * MaxAmplitude;
+
+        var waveformPen = RenderResourceCache.GetPen(
+            Color.FromArgb(200, 130, 230, 130), 1.4);
+
+        // 피크 인덱스 ↔ 시간 매핑
+        double msPerPeak = (double)waveform.SamplesPerPeak / waveform.SampleRate * 1000.0;
+        if (msPerPeak <= 0) return;
+
+        // 뷰포트에 보이는 클립 영역만 계산
+        double visibleLeft = Math.Max(clipRect.Left, 0);
+        double visibleRight = Math.Min(clipRect.Right, Bounds.Width);
+        if (visibleRight <= visibleLeft) return;
+
+        double pixelStep = 2.0;
+
+        if (mode == WaveformDisplayMode.Rectified)
+        {
+            // Rectified: 하단 기준선에서 위로만 그림
+            double baseY = clipRect.Bottom - 2;
+            double fullHeight = clipRect.Height * 0.85; // 전체 높이의 85% 사용
+
+            for (double x = visibleLeft; x < visibleRight; x += pixelStep)
+            {
+                double relativeMs = (x - clipRect.Left) / _pixelsPerMs;
+                if (relativeMs < 0) continue;
+
+                int peakIndex = (int)(relativeMs / msPerPeak);
+                if (peakIndex < 0 || peakIndex >= waveform.Peaks.Length) continue;
+
+                float peak = waveform.Peaks[peakIndex];
+                double amplitude = peak * fullHeight;
+                if (amplitude < 0.5) continue;
+
+                context.DrawLine(waveformPen,
+                    new Point(x, baseY),
+                    new Point(x, baseY - amplitude));
+            }
+        }
+        else
+        {
+            // NonRectified: 중앙 기준 상하 대칭
+            for (double x = visibleLeft; x < visibleRight; x += pixelStep)
+            {
+                double relativeMs = (x - clipRect.Left) / _pixelsPerMs;
+                if (relativeMs < 0) continue;
+
+                int peakIndex = (int)(relativeMs / msPerPeak);
+                if (peakIndex < 0 || peakIndex >= waveform.Peaks.Length) continue;
+
+                float peak = waveform.Peaks[peakIndex];
+                double amplitude = peak * halfHeight;
+                if (amplitude < 0.5) continue;
+
+                context.DrawLine(waveformPen,
+                    new Point(x, centerY - amplitude),
+                    new Point(x, centerY + amplitude));
+            }
+        }
+    }
+
+    /// <summary>
+    /// 시뮬레이션 파형 (데이터 로딩 전 표시용)
+    /// </summary>
+    private void DrawSimulatedWaveform(DrawingContext context, Rect clipRect, double centerY)
+    {
+        const int SampleInterval = 2;
+        const double MaxAmplitude = 0.42;
+
+        var random = new System.Random((int)clipRect.X);
+        var waveformPen = RenderResourceCache.GetPen(
+            Color.FromArgb(120, 130, 230, 130), 1.4); // 로딩 중은 약간 투명
+
         for (double x = clipRect.Left; x < clipRect.Right; x += SampleInterval)
         {
-            // 복잡한 웨이브 생성 (여러 주파수 조합 - 사실적인 오디오 시뮬레이션)
             double phase1 = (x - clipRect.Left) / 15.0;
             double phase2 = (x - clipRect.Left) / 35.0;
             double phase3 = (x - clipRect.Left) / 50.0;
@@ -857,22 +1158,10 @@ public class ClipCanvasPanel : Control
             double combinedWave = (sine1 + sine2 + sine3 + noise) / 2.0;
             double amplitude = Math.Abs(combinedWave) * MaxAmplitude * clipRect.Height;
 
-            // 수직 바 그리기 (그라데이션 효과)
-            var topY = centerY - amplitude;
-            var bottomY = centerY + amplitude;
-
-            // 밝은 초록색 (DaVinci Resolve 스타일)
-            var pen = RenderResourceCache.GetPen(Color.FromArgb(200, 130, 230, 130), 1.4);
-
-            context.DrawLine(pen,
-                new Point(x, topY),
-                new Point(x, bottomY));
+            context.DrawLine(waveformPen,
+                new Point(x, centerY - amplitude),
+                new Point(x, centerY + amplitude));
         }
-
-        // 중앙선 (가이드라인)
-        context.DrawLine(RenderResourceCache.WaveformCenterPen,
-            new Point(clipRect.Left, centerY),
-            new Point(clipRect.Right, centerY));
     }
 
     /// <summary>
@@ -883,37 +1172,88 @@ public class ClipCanvasPanel : Control
         DrawingContext context, ThumbnailStrip strip,
         Rect clipRect, ClipModel clip)
     {
-        // 썸네일 표시 영역 (클립 상하 5px 마진)
-        double thumbMargin = 5;
+        // 썸네일 표시 영역 (클립 상하 2px 마진)
+        double thumbMargin = 2;
         double thumbHeight = clipRect.Height - thumbMargin * 2;
         if (thumbHeight <= 0) return;
 
         double aspectRatio = 16.0 / 9.0;
-        double thumbWidth = thumbHeight * aspectRatio;
+        double slotWidth = thumbHeight * aspectRatio; // 각 슬롯 픽셀 폭
 
-        // 클립 영역으로 클리핑 (썸네일이 클립 밖으로 안 나가도록)
+        // 현재 재생 위치가 이 클립 내부에 있을 경우, 해당 슬롯을 하이라이트해서
+        // "지금 어느 부분이 재생 중인지"를 한눈에 볼 수 있도록 한다.
+        bool highlightThisClip = false;
+        long currentLocalTimeMs = 0;
+        if (_viewModel != null)
+        {
+            long current = _viewModel.CurrentTimeMs;
+            long clipStart = clip.StartTimeMs;
+            long clipEnd = clip.StartTimeMs + clip.DurationMs;
+            if (current >= clipStart && current <= clipEnd)
+            {
+                highlightThisClip = true;
+                currentLocalTimeMs = current - clipStart; // 클립 로컬 시간
+            }
+        }
+
+        // 클립 영역으로 클리핑
         using (context.PushClip(clipRect))
         {
-            foreach (var thumb in strip.Thumbnails)
+            // 연속 타일링: 슬롯을 빈틈없이 배치하고, 각 슬롯에 가장 가까운 썸네일 표시
+            double slotX = clipRect.X;
+            double clipEndX = clipRect.X + clipRect.Width;
+            var thumbList = strip.Thumbnails;
+            int thumbCount = thumbList.Count;
+
+            while (slotX < clipEndX && thumbCount > 0)
             {
-                // 클립 내 시간 위치 → 픽셀 위치
-                double thumbX = clipRect.X + (thumb.SourceTimeMs * _pixelsPerMs);
-
-                // 뷰포트 밖 스킵 (성능)
-                if (thumbX + thumbWidth < 0 || thumbX > Bounds.Width)
+                // 뷰포트 밖 슬롯 스킵 (성능)
+                if (slotX + slotWidth < 0)
+                {
+                    slotX += slotWidth;
                     continue;
+                }
+                if (slotX > Bounds.Width)
+                    break;
 
-                var destRect = new Rect(
-                    thumbX,
-                    clipRect.Y + thumbMargin,
-                    thumbWidth,
-                    thumbHeight);
+                // 슬롯 중심의 시간 위치 계산 (클립 로컬 시간 기준)
+                double slotCenterX = slotX + slotWidth / 2 - clipRect.X;
+                long slotTimeMs = (long)(slotCenterX / _pixelsPerMs);
 
-                context.DrawImage(thumb.Bitmap, destRect);
+                // 가장 가까운 캐시된 썸네일 찾기 (이진 탐색)
+                var bestThumb = FindNearestThumbnail(thumbList, slotTimeMs);
+
+                if (bestThumb != null)
+                {
+                    // 슬롯 폭이 클립 끝을 넘지 않도록 클램핑
+                    double drawWidth = Math.Min(slotWidth, clipEndX - slotX);
+                    var destRect = new Rect(
+                        slotX,
+                        clipRect.Y + thumbMargin,
+                        drawWidth,
+                        thumbHeight);
+
+                    context.DrawImage(bestThumb.Bitmap, destRect);
+
+                    // 현재 재생 위치가 이 슬롯 근처라면 하이라이트 오버레이
+                    if (highlightThisClip)
+                    {
+                        // 한 슬롯 간격(≈ strip.IntervalMs) 안에 있으면 현재 위치로 간주
+                        long interval = Math.Max(strip.IntervalMs, 1);
+                        if (Math.Abs(slotTimeMs - currentLocalTimeMs) <= interval / 2)
+                        {
+                            var highlightBrush = RenderResourceCache.GetSolidBrush(
+                                Color.FromArgb(80, 255, 255, 255));
+                            context.FillRectangle(highlightBrush, destRect);
+                        }
+                    }
+                }
+
+                slotX += slotWidth;
             }
 
-            // 썸네일 위에 반투명 오버레이 (클립 색상 유지)
-            byte overlayR = 58, overlayG = 123, overlayB = 242; // 비디오 기본색 #3A7BF2
+            // 썸네일 위에 반투명 오버레이 (클립 색상 틴트)
+            byte overlayR = 58, overlayG = 123, overlayB = 242;
             if (clip.ColorLabelArgb != 0)
             {
                 overlayR = (byte)((clip.ColorLabelArgb >> 16) & 0xFF);
@@ -922,9 +1262,33 @@ public class ClipCanvasPanel : Control
             }
 
             var overlayBrush = RenderResourceCache.GetSolidBrush(
-                Color.FromArgb(80, overlayR, overlayG, overlayB));
+                Color.FromArgb(60, overlayR, overlayG, overlayB));
             context.FillRectangle(overlayBrush, clipRect);
         }
+    }
+
+    /// <summary>
+    /// 이진 탐색으로 특정 시간에 가장 가까운 썸네일 찾기
+    /// </summary>
+    private static CachedThumbnail? FindNearestThumbnail(List<CachedThumbnail> thumbs, long timeMs)
+    {
+        if (thumbs.Count == 0) return null;
+        if (thumbs.Count == 1) return thumbs[0];
+
+        int lo = 0, hi = thumbs.Count - 1;
+        while (lo < hi - 1)
+        {
+            int mid = (lo + hi) / 2;
+            if (thumbs[mid].SourceTimeMs <= timeMs)
+                lo = mid;
+            else
+                hi = mid;
+        }
+
+        // lo와 hi 중 더 가까운 쪽 반환
+        long diffLo = Math.Abs(thumbs[lo].SourceTimeMs - timeMs);
+        long diffHi = Math.Abs(thumbs[hi].SourceTimeMs - timeMs);
+        return diffLo <= diffHi ? thumbs[lo] : thumbs[hi];
     }
 
     /// <summary>
@@ -1619,6 +1983,14 @@ public class ClipCanvasPanel : Control
                 var clickedClip = GetClipAtPosition(point);
                 if (clickedClip != null && _viewModel.RazorTool != null)
                 {
+                    // Lock된 트랙 클립은 Razor 차단
+                    var razorTrack = GetTrackByIndex(clickedClip.TrackIndex);
+                    if (razorTrack != null && razorTrack.IsLocked)
+                    {
+                        e.Handled = true;
+                        return;
+                    }
+
                     var cutTime = XToTime(point.X);
 
                     // Shift + 클릭: 모든 트랙 동시 자르기
@@ -1675,25 +2047,35 @@ public class ClipCanvasPanel : Control
                     _viewModel.SelectedClips.Add(_selectedClip);
                 }
 
-                // 트림 엣지 감지
-                _trimEdge = HitTestEdge(_selectedClip, point);
-
-                if (_trimEdge != ClipEdge.None)
+                // Lock된 트랙의 클립은 드래그/트림 차단
+                var selectedTrack = GetTrackByIndex(_selectedClip.TrackIndex);
+                if (selectedTrack != null && selectedTrack.IsLocked)
                 {
-                    // 트림 모드
-                    _isTrimming = true;
-                    _draggingClip = _selectedClip;
-                    _dragStartPoint = point;
-                    _originalStartTimeMs = _selectedClip.StartTimeMs;
-                    _originalDurationMs = _selectedClip.DurationMs;
-                    Cursor = new Cursor(StandardCursorType.SizeWestEast);
+                    // 선택만 허용, 드래그/트림 불가
+                    Cursor = new Cursor(StandardCursorType.No);
                 }
                 else
                 {
-                    // 드래그 모드
-                    _isDragging = true;
-                    _draggingClip = _selectedClip;
-                    _dragStartPoint = point;
+                    // 트림 엣지 감지
+                    _trimEdge = HitTestEdge(_selectedClip, point);
+
+                    if (_trimEdge != ClipEdge.None)
+                    {
+                        // 트림 모드
+                        _isTrimming = true;
+                        _draggingClip = _selectedClip;
+                        _dragStartPoint = point;
+                        _originalStartTimeMs = _selectedClip.StartTimeMs;
+                        _originalDurationMs = _selectedClip.DurationMs;
+                        Cursor = new Cursor(StandardCursorType.SizeWestEast);
+                    }
+                    else
+                    {
+                        // 드래그 모드
+                        _isDragging = true;
+                        _draggingClip = _selectedClip;
+                        _dragStartPoint = point;
+                    }
                 }
             }
             else
@@ -1897,9 +2279,9 @@ public class ClipCanvasPanel : Control
 
         if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
-            // Ctrl + 마우스휠: 수평 Zoom (0.01 ~ 5.0) - 최대 500%
+            // Ctrl + 마우스휠: 수평 Zoom (0.001 ~ 5.0)
             var zoomFactor = e.Delta.Y > 0 ? 1.1 : 0.9;
-            var newZoom = Math.Clamp(_pixelsPerMs * zoomFactor, 0.01, 5.0);
+            var newZoom = Math.Clamp(_pixelsPerMs * zoomFactor, 0.001, 5.0);
 
             // TimelineCanvas를 통해 전체 컴포넌트에 Zoom 적용
             var timelineCanvas = this.GetVisualAncestors().OfType<TimelineCanvas>().FirstOrDefault();

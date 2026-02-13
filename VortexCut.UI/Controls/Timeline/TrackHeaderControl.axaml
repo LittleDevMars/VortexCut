@@ -1,91 +1,171 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:controls="using:VortexCut.UI.Controls.Timeline"
-             mc:Ignorable="d" d:DesignWidth="60" d:DesignHeight="60"
              x:Class="VortexCut.UI.Controls.Timeline.TrackHeaderControl"
              x:DataType="controls:TrackHeaderControl">
 
-    <Border BorderBrush="#444444" BorderThickness="0,0,1,1">
-        <Border.Background>
-            <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
-                <GradientStop Color="#2D2D30" Offset="0"/>
-                <GradientStop Color="#252527" Offset="1"/>
-            </LinearGradientBrush>
-        </Border.Background>
-        <Grid RowDefinitions="Auto,Auto,*,Auto">
-            <!-- 트랙 번호/타입 배지 (아이콘 + 번호) -->
-            <Border Grid.Row="0"
-                    Name="TrackBadge"
-                    Background="#007ACC"
-                    Padding="4,2"
-                    CornerRadius="0,0,8,8"
-                    HorizontalAlignment="Center"
-                    Margin="0,0,0,4">
-                <StackPanel Orientation="Horizontal" Spacing="3">
-                    <!-- 트랙 타입 아이콘 (Code-behind에서 설정) -->
-                    <TextBlock Name="TrackTypeIcon"
-                               FontSize="11"
-                               Foreground="White"
-                               VerticalAlignment="Center"/>
-                    <!-- 트랙 번호 -->
-                    <TextBlock Text="{Binding Track.Index}"
-                               FontSize="10"
-                               FontWeight="Bold"
-                               Foreground="White"
-                               VerticalAlignment="Center"/>
-                </StackPanel>
+    <UserControl.Styles>
+        <!-- M/S/L 토글 버튼 커스텀 템플릿 -->
+        <Style Selector="ToggleButton.trackBtn">
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Background="{TemplateBinding Background}"
+                            CornerRadius="3"
+                            BorderThickness="1"
+                            BorderBrush="#505052">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+            <Setter Property="Width" Value="18"/>
+            <Setter Property="Height" Value="18"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="#3D3D40"/>
+            <Setter Property="Foreground" Value="#AAAAAA"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="ToggleButton.trackBtn:pointerover">
+            <Setter Property="Background" Value="#505052"/>
+            <Setter Property="Foreground" Value="#DDDDDD"/>
+        </Style>
+
+        <!-- Mute 활성: 빨간색 -->
+        <Style Selector="ToggleButton.muteBtn:checked">
+            <Setter Property="Background" Value="#C0392B"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="ToggleButton.muteBtn:checked:pointerover">
+            <Setter Property="Background" Value="#E74C3C"/>
+        </Style>
+
+        <!-- Solo 활성: 노란색 -->
+        <Style Selector="ToggleButton.soloBtn:checked">
+            <Setter Property="Background" Value="#D4A017"/>
+            <Setter Property="Foreground" Value="#1E1E1E"/>
+        </Style>
+        <Style Selector="ToggleButton.soloBtn:checked:pointerover">
+            <Setter Property="Background" Value="#F0C040"/>
+        </Style>
+
+        <!-- Lock 활성: 파란색 -->
+        <Style Selector="ToggleButton.lockBtn:checked">
+            <Setter Property="Background" Value="#007ACC"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style Selector="ToggleButton.lockBtn:checked:pointerover">
+            <Setter Property="Background" Value="#1E90FF"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid ColumnDefinitions="5,*">
+        <!-- 좌측 트랙 색상 바 (우클릭 → 색상 팝업) -->
+        <Border Grid.Column="0" Name="ColorBar" CornerRadius="2,0,0,2"
+                Cursor="Hand" ToolTip.Tip="Right-click to change color"/>
+
+        <!-- 색상 팔레트 팝업 -->
+        <Popup Grid.Column="0" Name="ColorPopup"
+               PlacementMode="Right"
+               IsLightDismissEnabled="True">
+            <Border Background="#2A2A2C" BorderBrush="#555" BorderThickness="1"
+                    CornerRadius="4" Padding="4">
+                <UniformGrid Name="ColorGrid" Columns="4" Rows="4"/>
             </Border>
+        </Popup>
 
-            <!-- 트랙 이름 -->
-            <TextBox Grid.Row="1"
-                     Name="TrackNameTextBox"
-                     Text="{Binding Track.Name}"
-                     FontSize="11"
-                     FontWeight="SemiBold"
-                     Background="Transparent"
-                     BorderThickness="0"
-                     Padding="4,2"
-                     HorizontalAlignment="Center"/>
+        <!-- 메인 콘텐츠 -->
+        <Border Grid.Column="1" BorderBrush="#505052" BorderThickness="0,0,0,1">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                    <GradientStop Color="#2F2F32" Offset="0"/>
+                    <GradientStop Color="#272729" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.Background>
 
-            <!-- 버튼 영역 -->
-            <StackPanel Grid.Row="2" Orientation="Vertical" Spacing="2" Margin="4">
-                <!-- Mute 버튼 -->
-                <ToggleButton Name="MuteButton"
-                              IsChecked="{Binding Track.IsMuted}"
-                              Content="M"
-                              Width="50" Height="20"
-                              FontSize="10"
-                              Padding="0"
-                              ToolTip.Tip="Mute"/>
+            <Grid RowDefinitions="Auto,*,Auto,Auto,Auto">
+                <!-- 상단 트랙 색상 하이라이트 (탭 효과) -->
+                <Border Grid.Row="0" Height="2" Name="TopHighlight" Opacity="0.6"/>
 
-                <!-- Solo 버튼 -->
-                <ToggleButton Name="SoloButton"
-                              IsChecked="{Binding Track.IsSolo}"
-                              Content="S"
-                              Width="50" Height="20"
-                              FontSize="10"
-                              Padding="0"
-                              ToolTip.Tip="Solo"/>
+                <!-- 트랙 이름 (트랙 색상으로 표시, 더블클릭 편집) -->
+                <TextBlock Grid.Row="1"
+                           Name="TrackNameLabel"
+                           FontSize="14"
+                           FontWeight="Bold"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Cursor="Hand"
+                           ToolTip.Tip="Double-click to rename"/>
 
-                <!-- Lock 버튼 -->
-                <ToggleButton Name="LockButton"
-                              IsChecked="{Binding Track.IsLocked}"
-                              Content="🔒"
-                              Width="50" Height="20"
-                              FontSize="10"
-                              Padding="0"
-                              ToolTip.Tip="Lock"/>
-            </StackPanel>
+                <!-- 트랙 이름 편집 TextBox (더블클릭 시 표시) -->
+                <TextBox Grid.Row="1"
+                         Name="TrackNameEditor"
+                         FontSize="12"
+                         FontWeight="Bold"
+                         HorizontalAlignment="Stretch"
+                         VerticalAlignment="Center"
+                         IsVisible="False"
+                         Padding="2"
+                         Margin="2,0"
+                         Background="#1E1E1E"
+                         Foreground="White"
+                         BorderBrush="#007ACC"
+                         BorderThickness="1"/>
 
-            <!-- 높이 조절 그립 (Phase 2A 후반) -->
-            <Border Grid.Row="3"
-                    Name="ResizeGrip"
-                    Height="4"
-                    Background="#007ACC"
-                    Cursor="SizeNorthSouth"
-                    ToolTip.Tip="Drag to resize track"/>
-        </Grid>
-    </Border>
+                <!-- M/S/L/D 버튼 행 -->
+                <StackPanel Grid.Row="2"
+                            Orientation="Horizontal"
+                            Spacing="1"
+                            HorizontalAlignment="Center"
+                            Margin="0,0,0,2">
+                    <ToggleButton Name="MuteButton"
+                                  Classes="trackBtn muteBtn"
+                                  IsChecked="{Binding Track.IsMuted}"
+                                  Content="M"
+                                  ToolTip.Tip="Mute"/>
+                    <ToggleButton Name="SoloButton"
+                                  Classes="trackBtn soloBtn"
+                                  IsChecked="{Binding Track.IsSolo}"
+                                  Content="S"
+                                  ToolTip.Tip="Solo"/>
+                    <ToggleButton Name="LockButton"
+                                  Classes="trackBtn lockBtn"
+                                  IsChecked="{Binding Track.IsLocked}"
+                                  Content="L"
+                                  ToolTip.Tip="Lock"/>
+                </StackPanel>
+
+                <!-- Display Mode 버튼 (클릭 → Filmstrip/Thumbnail/Minimal 순환) -->
+                <Border Grid.Row="3"
+                        Name="DisplayModeButton"
+                        Height="12"
+                        Cursor="Hand"
+                        Background="Transparent"
+                        ToolTip.Tip="Click to change display mode">
+                    <TextBlock Name="DisplayModeLabel"
+                               FontSize="8"
+                               Foreground="#888888"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Text="FILM"/>
+                </Border>
+
+                <!-- 리사이즈 그립 -->
+                <Border Grid.Row="4"
+                        Name="ResizeGrip"
+                        Height="3"
+                        Cursor="SizeNorthSouth"
+                        ToolTip.Tip="Drag to resize">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                            <GradientStop Color="#454548" Offset="0"/>
+                            <GradientStop Color="#2D2D30" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                </Border>
+            </Grid>
+        </Border>
+    </Grid>
 </UserControl>

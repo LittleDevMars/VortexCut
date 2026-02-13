@@ -4,6 +4,8 @@
 pub mod types;
 pub mod timeline;
 pub mod renderer;
+pub mod audio;
+pub mod thumbnail;
 
 use std::ffi::CString;
 use std::os::raw::c_char;

@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Media;
 using System.Collections.ObjectModel;
 using VortexCut.Core.Models;
 

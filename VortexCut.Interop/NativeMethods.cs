@@ -161,6 +161,14 @@ public static class NativeMethods
         out nuint outDataSize);
 
     /// <summary>
+    /// 재생 모드 설정 (재생 시작 시 1, 정지 시 0)
+    /// 재생 모드: forward_threshold=5000ms (seek 대신 forward decode)
+    /// 스크럽 모드: forward_threshold=100ms (즉시 seek)
+    /// </summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int renderer_set_playback_mode(IntPtr renderer, int playback);
+
+    /// <summary>
     /// 프레임 캐시 클리어 (클립 편집 시 호출)
     /// </summary>
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
@@ -195,4 +203,61 @@ public static class NativeMethods
         out uint outHeight,
         out IntPtr outData,
         out nuint outDataSize);
+
+    // ==================== Thumbnail Session Functions ====================
+
+    /// <summary>
+    /// 썸네일 세션 생성 (디코더를 한 번 열고 여러 프레임 생성)
+    /// filePath는 UTF-8 인코딩된 IntPtr
+    /// </summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int thumbnail_session_create(
+        IntPtr filePath,
+        uint thumbWidth,
+        uint thumbHeight,
+        out IntPtr outSession,
+        out long outDurationMs,
+        out double outFps);
+
+    /// <summary>
+    /// 세션에서 특정 시간의 썸네일 생성
+    /// width=0, height=0이면 프레임 스킵 (FrameSkipped/EOF)
+    /// </summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int thumbnail_session_generate(
+        IntPtr session,
+        long timestampMs,
+        out uint outWidth,
+        out uint outHeight,
+        out IntPtr outData,
+        out nuint outDataSize);
+
+    /// <summary>
+    /// 썸네일 세션 파괴
+    /// </summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int thumbnail_session_destroy(IntPtr session);
+
+    // ==================== Audio Waveform Functions ====================
+
+    /// <summary>
+    /// 오디오 파형 피크 데이터 추출
+    /// filePath는 UTF-8 인코딩된 IntPtr (Marshal.StringToCoTaskMemUTF8 사용)
+    /// samples_per_peak: 다운샘플 비율 (예: 1024 → 1024 샘플당 1 피크)
+    /// </summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int extract_audio_peaks(
+        IntPtr filePath,
+        uint samplesPerPeak,
+        out IntPtr outPeaks,
+        out uint outPeakCount,
+        out uint outChannels,
+        out uint outSampleRate,
+        out long outDurationMs);
+
+    /// <summary>
+    /// 오디오 피크 데이터 메모리 해제
+    /// </summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int free_audio_peaks(IntPtr peaks, uint count);
 }

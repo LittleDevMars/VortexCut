@@ -19,11 +19,19 @@ public partial class PreviewViewModel : ViewModelBase, IDisposable
     private bool _isPlaying = false;
 
     private TimelineViewModel? _timelineViewModel; // Timeline 참조
-    private volatile bool _isRendering = false; // 렌더링 동시성 제어
 
     // Stopwatch 기반 플레이백 클럭 (누적 오차 방지)
     private readonly System.Diagnostics.Stopwatch _playbackClock = new();
     private long _playbackStartTimeMs; // 재생 시작 시점의 타임라인 위치
+
+    // 단일 렌더 슬롯: 동시에 하나의 렌더만 진행 → Mutex 경합 방지
+    // 0=idle, 1=active. Interlocked.CompareExchange로 원자적 전환
+    private int _playbackRenderActive = 0;
+
+    // 스크럽 렌더 슬롯: 스크럽도 동시 1개만 실행 → try_lock 경합 + FFmpeg 재진입 방지
+    private int _scrubRenderActive = 0;
+    // 스크럽 최신 요청 timestamp: 렌더 완료 후 새 요청이 있으면 마지막 것만 실행
+    private long _pendingScrubTimeMs = -1;
 
     // 더블 버퍼링: 두 비트맵을 교대 사용 → 참조 변경으로 Image 바인딩 강제 갱신
     private WriteableBitmap? _bitmapA;
@@ -72,10 +80,99 @@ public partial class PreviewViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// 특정 시간의 프레임 렌더링
-    /// NOTE: Rust Renderer가 Mutex로 보호되므로 C# 측에서 동기화 불필요
+    /// 특정 시간의 프레임 렌더링 (스크럽/시크 용)
+    /// 단일 슬롯 스로틀링: 이전 렌더 진행 중이면 최신 timestamp만 기록하고 건너뜀
+    /// → FFmpeg 재진입 방지 + try_lock 경합 방지 + 패킷 큐 폭증 방지
     /// </summary>
-    public async Task RenderFrameAsync(long timestampMs)
+    public void RenderFrameAsync(long timestampMs)
+    {
+        // 재생 중이면 스크럽 렌더 무시 (PlaybackRenderAsync가 처리)
+        if (IsPlaying) return;
+
+        // 최신 요청 timestamp 기록 (이전 요청 덮어쓰기)
+        Interlocked.Exchange(ref _pendingScrubTimeMs, timestampMs);
+
+        // 단일 슬롯: 이전 렌더 진행 중이면 건너뜀 (완료 후 pending 확인)
+        if (Interlocked.CompareExchange(ref _scrubRenderActive, 1, 0) != 0)
+            return;
+
+        _ = ScrubRenderLoop();
+    }
+
+    /// <summary>
+    /// 스크럽 렌더 루프: 현재 pending timestamp를 렌더하고,
+    /// 완료 후 새 pending이 있으면 마지막 것만 렌더 (중간 프레임 건너뜀)
+    /// </summary>
+    private async Task ScrubRenderLoop()
+    {
+        try
+        {
+            while (true)
+            {
+                // pending timestamp 가져오고 초기화
+                long ts = Interlocked.Exchange(ref _pendingScrubTimeMs, -1);
+                if (ts < 0) break; // 더 이상 pending 없음
+
+                byte[]? frameData = null;
+                uint width = 0, height = 0;
+
+                await Task.Run(() =>
+                {
+                    try
+                    {
+                        using var frame = _projectService.RenderFrame(ts);
+                        if (frame != null)
+                        {
+                            frameData = frame.Data.ToArray();
+                            width = frame.Width;
+                            height = frame.Height;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Services.DebugLogger.Log($"[SCRUB] RenderFrame threw at {ts}ms: {ex.Message}");
+                    }
+                });
+
+                // UI 스레드에서 비트맵 업데이트
+                await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    if (frameData != null)
+                    {
+                        try { UpdateBitmap(frameData, width, height); }
+                        catch (Exception ex) { Services.DebugLogger.Log($"Bitmap error: {ex.Message}"); }
+                    }
+                    CurrentTimeMs = ts;
+                });
+
+                // 새 pending이 들어왔는지 확인 → 있으면 계속
+                if (Interlocked.Read(ref _pendingScrubTimeMs) < 0) break;
+            }
+        }
+        catch (Exception ex)
+        {
+            Services.DebugLogger.Log($"[SCRUB] Render loop error: {ex.Message}");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _scrubRenderActive, 0);
+
+            // 슬롯 해제 후 또 pending이 들어왔으면 재시작
+            if (Interlocked.Read(ref _pendingScrubTimeMs) >= 0)
+            {
+                if (Interlocked.CompareExchange(ref _scrubRenderActive, 1, 0) == 0)
+                {
+                    _ = ScrubRenderLoop();
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// 재생 전용 프레임 렌더링 (단일 렌더 슬롯)
+    /// 이전 렌더가 완료된 후에만 다음 렌더 시작 → Rust Mutex 경합 없음
+    /// </summary>
+    private async Task PlaybackRenderAsync(long timestampMs)
     {
         try
         {
@@ -84,29 +181,40 @@ public partial class PreviewViewModel : ViewModelBase, IDisposable
 
             await Task.Run(() =>
             {
-                using var frame = _projectService.RenderFrame(timestampMs);
-                if (frame != null)
+                try
                 {
-                    frameData = frame.Data.ToArray();
-                    width = frame.Width;
-                    height = frame.Height;
+                    using var frame = _projectService.RenderFrame(timestampMs);
+                    if (frame != null)
+                    {
+                        frameData = frame.Data.ToArray();
+                        width = frame.Width;
+                        height = frame.Height;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Services.DebugLogger.Log($"[PLAYBACK] RenderFrame threw at {timestampMs}ms: {ex.Message}");
                 }
             });
 
-            // UI 스레드에서 비트맵 + 시간 업데이트
-            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+            // UI 스레드에서 비트맵만 업데이트 (시간은 OnPlaybackTick에서 이미 업데이트)
+            if (frameData != null)
             {
-                if (frameData != null)
+                await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
                 {
                     try { UpdateBitmap(frameData, width, height); }
                     catch (Exception ex) { Services.DebugLogger.Log($"Bitmap error: {ex.Message}"); }
-                }
-                CurrentTimeMs = timestampMs;
-            });
+                });
+            }
         }
         catch (Exception ex)
         {
-            Services.DebugLogger.Log($"RenderFrameAsync error: {ex.Message}");
+            Services.DebugLogger.Log($"[PLAYBACK] Render error at {timestampMs}ms: {ex.Message}");
+        }
+        finally
+        {
+            // 렌더 슬롯 해제 → 다음 틱에서 새 렌더 시작 가능
+            Interlocked.Exchange(ref _playbackRenderActive, 0);
         }
     }
 
@@ -157,39 +265,66 @@ public partial class PreviewViewModel : ViewModelBase, IDisposable
     /// </summary>
     public void TogglePlayback()
     {
-        System.Diagnostics.Debug.WriteLine($"▶️ TogglePlayback called! Current IsPlaying={IsPlaying}");
+        Services.DebugLogger.Log($"[PLAY] TogglePlayback: IsPlaying={IsPlaying}");
 
         if (IsPlaying)
         {
             _playbackTimer.Stop();
             _playbackClock.Stop();
+            _projectService.SetPlaybackMode(false); // 스크럽 모드로 전환
             IsPlaying = false;
+            Services.DebugLogger.Log("[PLAY] Stopped");
         }
         else
         {
             // 클립이 없으면 재생하지 않음
             if (_timelineViewModel == null || _timelineViewModel.Clips.Count == 0)
             {
-                System.Diagnostics.Debug.WriteLine("   ⚠️ No clips to play!");
+                Services.DebugLogger.Log("[PLAY] No clips! Aborting.");
                 return;
             }
 
-            System.Diagnostics.Debug.WriteLine("   Starting playback...");
             // 재생 시작: Timeline의 현재 시간부터 시작
             if (_timelineViewModel != null)
             {
                 CurrentTimeMs = _timelineViewModel.CurrentTimeMs;
             }
+
+            // maxEndTime 계산
+            long maxEndTime = 0;
+            foreach (var clip in _timelineViewModel!.Clips)
+            {
+                var clipEnd = clip.StartTimeMs + clip.DurationMs;
+                if (clipEnd > maxEndTime) maxEndTime = clipEnd;
+            }
+
+            Services.DebugLogger.Log($"[PLAY] CurrentTimeMs={CurrentTimeMs}, maxEndTime={maxEndTime}, remaining={maxEndTime - CurrentTimeMs}ms");
+
+            // 영상 끝 근처(500ms 이내)에서 재생 시 → 자동으로 처음부터 재생 (표준 NLE 동작)
+            if (CurrentTimeMs >= maxEndTime - 500)
+            {
+                Services.DebugLogger.Log($"[PLAY] Near end, wrapping to 0");
+                CurrentTimeMs = 0;
+                _timelineViewModel.CurrentTimeMs = 0;
+            }
+
             // Stopwatch 기반 클럭 시작 (누적 오차 방지)
             _playbackStartTimeMs = CurrentTimeMs;
+            Interlocked.Exchange(ref _playbackRenderActive, 0); // 렌더 슬롯 초기화
+            _projectService.SetPlaybackMode(true); // 재생 모드로 전환 (forward_threshold=5000ms)
             _playbackClock.Restart();
             _playbackTimer.Start();
             IsPlaying = true;
+            Services.DebugLogger.Log($"[PLAY] Started from {_playbackStartTimeMs}ms");
         }
     }
 
     /// <summary>
-    /// 재생 타이머 틱 (INTERACTION_FLOWS.md: Latencyless Feel)
+    /// 재생 타이머 틱
+    /// 핵심: 단일 렌더 슬롯 패턴으로 Mutex 경합 방지
+    /// - 이전 렌더가 완료되지 않았으면 이번 틱의 렌더는 건너뜀
+    /// - Mutex는 항상 즉시 획득 가능 → try_lock 100% 성공
+    /// - 디코더 위치가 항상 최신 → 순차 디코딩으로 빠른 렌더
     /// </summary>
     private void OnPlaybackTick(object? sender, ElapsedEventArgs e)
     {
@@ -210,6 +345,7 @@ public partial class PreviewViewModel : ViewModelBase, IDisposable
             {
                 _playbackTimer.Stop();
                 _playbackClock.Stop();
+                _projectService.SetPlaybackMode(false); // 스크럽 모드로 복귀
                 Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                 {
                     IsPlaying = false;
@@ -221,7 +357,7 @@ public partial class PreviewViewModel : ViewModelBase, IDisposable
             }
         }
 
-        // CRITICAL: PropertyChanged → XAML 바인딩 업데이트는 UI 스레드에서만 가능
+        // 타임라인 시간 업데이트 (UI 스레드)
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
             CurrentTimeMs = newTimeMs;
@@ -231,54 +367,13 @@ public partial class PreviewViewModel : ViewModelBase, IDisposable
             }
         });
 
-        // 렌더링 동시성 제어: 이전 프레임 렌더링 중이면 스킵 (프레임 누적 방지)
-        if (_isRendering) return;
-        _isRendering = true;
-
-        _ = Task.Run(() =>
+        // 단일 렌더 슬롯: 이전 렌더가 완료된 경우에만 새 렌더 시작
+        // CompareExchange(ref active, 1, 0): active가 0이면 1로 바꾸고 0 반환 (→ 시작)
+        //                                    active가 1이면 그대로 1 반환 (→ 건너뜀)
+        if (Interlocked.CompareExchange(ref _playbackRenderActive, 1, 0) == 0)
         {
-            try
-            {
-                // Rust FFI 렌더링 + 데이터 복사 (배경 스레드, ~2ms)
-                byte[]? frameData = null;
-                uint width = 0, height = 0;
-
-                using var frame = _projectService.RenderFrame(newTimeMs);
-                if (frame != null)
-                {
-                    frameData = frame.Data.ToArray();
-                    width = frame.Width;
-                    height = frame.Height;
-                }
-
-                // Rust 렌더 완료 → 즉시 플래그 해제 (다음 프레임 렌더링 가능)
-                _isRendering = false;
-
-                // UI 업데이트는 Post로 fire-and-forget (UI 스레드 대기 안 함)
-                if (frameData != null)
-                {
-                    var data = frameData;
-                    var w = width;
-                    var h = height;
-                    Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                    {
-                        try
-                        {
-                            UpdateBitmap(data, w, h);
-                        }
-                        catch (Exception ex)
-                        {
-                            Services.DebugLogger.Log($"Bitmap update error: {ex.Message}");
-                        }
-                    });
-                }
-            }
-            catch (Exception ex)
-            {
-                _isRendering = false;
-                Services.DebugLogger.Log($"Playback render error: {ex.Message}");
-            }
-        });
+            _ = PlaybackRenderAsync(newTimeMs);
+        }
     }
 
     /// <summary>
@@ -304,8 +399,8 @@ public partial class PreviewViewModel : ViewModelBase, IDisposable
     }
 
     [RelayCommand]
-    private async Task SeekAsync(long timestampMs)
+    private void Seek(long timestampMs)
     {
-        await RenderFrameAsync(timestampMs);
+        RenderFrameAsync(timestampMs);
     }
 }

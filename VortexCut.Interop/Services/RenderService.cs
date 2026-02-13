@@ -10,6 +10,122 @@ namespace VortexCut.Interop.Services;
 public record VideoInfo(long DurationMs, uint Width, uint Height, double Fps);
 
 /// <summary>
+/// 썸네일 세션 SafeHandle - 디코더를 한 번 열고 여러 프레임 생성
+/// </summary>
+public class ThumbnailSessionHandle : SafeHandle
+{
+    public ThumbnailSessionHandle(IntPtr handle) : base(IntPtr.Zero, true)
+    {
+        SetHandle(handle);
+    }
+
+    public override bool IsInvalid => handle == IntPtr.Zero;
+
+    protected override bool ReleaseHandle()
+    {
+        return NativeMethods.thumbnail_session_destroy(handle) == ErrorCodes.SUCCESS;
+    }
+}
+
+/// <summary>
+/// 썸네일 세션 - 파일을 한 번 열고 여러 timestamp의 썸네일을 효율적으로 생성
+/// 기존 GenerateThumbnail (매번 파일 Open/Close) 대비:
+///   - 파일 Open 1회 (N회 → 1회)
+///   - 스케일러가 직접 썸네일 해상도로 출력 (960x540 거치지 않음)
+///   - 시간순 호출 시 forward decode 활용
+/// </summary>
+public class ThumbnailSession : IDisposable
+{
+    private ThumbnailSessionHandle? _handle;
+    private bool _disposed;
+
+    /// <summary>비디오 총 길이 (ms)</summary>
+    public long DurationMs { get; }
+
+    /// <summary>비디오 FPS</summary>
+    public double Fps { get; }
+
+    private ThumbnailSession(ThumbnailSessionHandle handle, long durationMs, double fps)
+    {
+        _handle = handle;
+        DurationMs = durationMs;
+        Fps = fps;
+    }
+
+    /// <summary>
+    /// 썸네일 세션 생성
+    /// </summary>
+    public static ThumbnailSession Create(string filePath, uint thumbWidth, uint thumbHeight)
+    {
+        if (string.IsNullOrEmpty(filePath))
+            throw new ArgumentException("File path cannot be null or empty", nameof(filePath));
+
+        if (!File.Exists(filePath))
+            throw new FileNotFoundException($"Video file not found: {filePath}");
+
+        IntPtr filePathPtr = Marshal.StringToCoTaskMemUTF8(filePath);
+        try
+        {
+            int result = NativeMethods.thumbnail_session_create(
+                filePathPtr,
+                thumbWidth,
+                thumbHeight,
+                out IntPtr sessionPtr,
+                out long durationMs,
+                out double fps);
+
+            if (result != ErrorCodes.SUCCESS)
+                throw new RustException($"thumbnail_session_create failed: error {result}");
+
+            var handle = new ThumbnailSessionHandle(sessionPtr);
+            return new ThumbnailSession(handle, durationMs, fps);
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(filePathPtr);
+        }
+    }
+
+    /// <summary>
+    /// 특정 시간의 썸네일 생성 (세션 내에서 디코더 재사용)
+    /// </summary>
+    /// <returns>RenderedFrame 또는 null (프레임 스킵/EOF)</returns>
+    public RenderedFrame? Generate(long timestampMs)
+    {
+        if (_disposed || _handle == null || _handle.IsInvalid)
+            throw new ObjectDisposedException(nameof(ThumbnailSession));
+
+        int result = NativeMethods.thumbnail_session_generate(
+            _handle.DangerousGetHandle(),
+            timestampMs,
+            out uint width,
+            out uint height,
+            out IntPtr dataPtr,
+            out nuint dataSize);
+
+        if (result != ErrorCodes.SUCCESS)
+            return null; // 디코딩 실패 → 스킵
+
+        // width=0 = 프레임 스킵 (FrameSkipped/EOF)
+        if (width == 0 || height == 0)
+            return null;
+
+        return new RenderedFrame(width, height, dataPtr, dataSize, timestampMs);
+    }
+
+    public void Dispose()
+    {
+        if (!_disposed)
+        {
+            _handle?.Dispose();
+            _handle = null;
+            _disposed = true;
+        }
+        GC.SuppressFinalize(this);
+    }
+}
+
+/// <summary>
 /// Renderer SafeHandle - 자동 메모리 관리
 /// </summary>
 public class RendererHandle : SafeHandle
@@ -274,6 +390,20 @@ public class RenderService : IDisposable
         CheckError(result);
 
         return new RenderedFrame(width, height, dataPtr, dataSize, timestampMs);
+    }
+
+    /// <summary>
+    /// 재생 모드 전환 (재생 시작/정지 시 호출)
+    /// 재생 모드: forward_threshold=5000ms → seek 대신 forward decode (빠른 순차 재생)
+    /// 스크럽 모드: forward_threshold=100ms → 즉시 seek (정확한 위치 이동)
+    /// </summary>
+    public void SetPlaybackMode(bool playback)
+    {
+        ThrowIfDisposed();
+        ThrowIfNoRenderer();
+
+        IntPtr rendererPtr = _renderer!.DangerousGetHandle();
+        NativeMethods.renderer_set_playback_mode(rendererPtr, playback ? 1 : 0);
     }
 
     /// <summary>

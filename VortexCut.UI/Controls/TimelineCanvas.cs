@@ -18,6 +18,7 @@ public class TimelineCanvas : Grid
     private readonly ClipCanvasPanel _clipCanvasPanel;
     private readonly ScrollViewer _scrollViewer;
     private readonly ThumbnailStripService _thumbnailService;
+    private readonly AudioWaveformService _audioWaveformService;
 
     private TimelineViewModel? _viewModel;
     private double _pixelsPerMs = 0.1;
@@ -91,12 +92,25 @@ public class TimelineCanvas : Grid
         };
         _clipCanvasPanel.SetThumbnailService(_thumbnailService);
 
+        // 오디오 파형 서비스 생성 + ClipCanvasPanel 주입
+        _audioWaveformService = new AudioWaveformService();
+        _audioWaveformService.OnWaveformReady = () =>
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(
+                _clipCanvasPanel.InvalidateVisual,
+                Avalonia.Threading.DispatcherPriority.Render);
+        };
+        _clipCanvasPanel.SetAudioWaveformService(_audioWaveformService);
+
         // 가상 스크롤 변경 시 TimelineHeader 동기화
         _clipCanvasPanel.OnVirtualScrollChanged = (offsetX) =>
         {
             _scrollOffsetX = offsetX;
             _timelineHeader.SetScrollOffset(offsetX);
         };
+
+        // 줌 슬라이더 → TimelineCanvas.SetZoom 연결 (Phase A-4)
+        _timelineHeader.OnZoomChanged = (pixelsPerMs) => SetZoom(pixelsPerMs);
 
         // ScrollViewer (수평/수직 스크롤)
         _scrollViewer = new ScrollViewer
@@ -136,6 +150,7 @@ public class TimelineCanvas : Grid
     {
         base.OnDetachedFromVisualTree(e);
         _thumbnailService?.Dispose();
+        _audioWaveformService?.Dispose();
     }
 
     /// <summary>
@@ -143,7 +158,7 @@ public class TimelineCanvas : Grid
     /// </summary>
     public void SetZoom(double pixelsPerMs)
     {
-        _pixelsPerMs = Math.Clamp(pixelsPerMs, 0.01, 5.0); // 최대 500%까지 확대
+        _pixelsPerMs = Math.Clamp(pixelsPerMs, 0.001, 5.0); // 최대 줌아웃 = 30분/1800px
         _timelineHeader.SetZoom(_pixelsPerMs);
         _clipCanvasPanel.SetZoom(_pixelsPerMs);
     }

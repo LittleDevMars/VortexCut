@@ -57,6 +57,14 @@ pub struct Decoder {
     state: DecoderState,
     /// 마지막 성공 디코딩 프레임 (EOF/에러 시 fallback용)
     last_decoded_frame: Option<Frame>,
+    /// Forward decode 임계값 (ms)
+    /// - 기본값: frame_duration * 2 (프리뷰 재생용)
+    /// - 썸네일 세션: 10000ms (GOP 내 불필요한 seek 방지)
+    /// - 현재 위치에서 이 범위 내의 미래 timestamp는 seek 없이 forward decode
+    forward_threshold_ms: i64,
+    /// EOF가 발생한 timestamp (ms) — 이 이후 timestamp에 대해 seek+decode 반복 방지
+    /// 역방향 seek 시 자동 초기화
+    eof_timestamp_ms: Option<i64>,
 }
 
 impl Decoder {
@@ -72,7 +80,7 @@ impl Decoder {
         // OPTIMIZATION: Multi-threading
         if let Ok(parallelism) = std::thread::available_parallelism() {
             let thread_count = parallelism.get();
-            println!("   🔧 Enabling multi-threading: {} threads", thread_count);
+            // Multi-threading 활성화
             context.set_threading(ffmpeg::threading::Config {
                 kind: ffmpeg::threading::Type::Frame,
                 count: thread_count,
@@ -90,8 +98,14 @@ impl Decoder {
         Ok((decoder, false))  // is_hardware will be updated based on actual usage
     }
 
-    /// 비디오 파일 열기
+    /// 비디오 파일 열기 (프리뷰용 960x540 고정 해상도)
     pub fn open(file_path: &Path) -> Result<Self, String> {
+        Self::open_with_resolution(file_path, 960, 540)
+    }
+
+    /// 비디오 파일 열기 (커스텀 출력 해상도 지정)
+    /// 썸네일 세션에서는 직접 썸네일 크기로 디코딩하여 불필요한 다운스케일 방지
+    pub fn open_with_resolution(file_path: &Path, target_width: u32, target_height: u32) -> Result<Self, String> {
         // FFmpeg 초기화
         ffmpeg::init().map_err(|e| format!("FFmpeg init failed: {}", e))?;
 
@@ -110,21 +124,14 @@ impl Decoder {
         let codec_params = video_stream.parameters();
         let codec_id = codec_params.id();
 
-        // OPTIMIZATION 2: Hardware acceleration 시도
-        println!("🎬 Codec: {:?}", codec_id);
-
         let (decoder, is_hardware) = Self::try_create_decoder(codec_id, codec_params)?;
 
         // 비디오 정보 추출
         let src_width = decoder.width();
         let src_height = decoder.height();
 
-        // OPTIMIZATION 1: 디코딩 해상도 절반으로 낮춤 (4배 속도 개선 예상)
-        let decode_width = 960;
-        let decode_height = 540;
-
-        println!("🎬 Decoder opened: {}x{} (source) -> {}x{} (decode target)",
-                 src_width, src_height, decode_width, decode_height);
+        let decode_width = target_width;
+        let decode_height = target_height;
 
         // FPS 계산
         let fps = f64::from(video_stream.avg_frame_rate());
@@ -141,7 +148,6 @@ impl Decoder {
         };
 
         // Scaler 생성 (YUV -> RGBA 변환 + 해상도 축소)
-        // CRITICAL: output을 960x540으로 설정 (1920x1080의 1/4 픽셀)
         let scaler = ffmpeg::software::scaling::Context::get(
             decoder.format(),
             src_width,
@@ -149,9 +155,11 @@ impl Decoder {
             ffmpeg::format::Pixel::RGBA,
             decode_width,
             decode_height,
-            ffmpeg::software::scaling::Flags::FAST_BILINEAR,  // BILINEAR -> FAST_BILINEAR (더 빠름)
+            ffmpeg::software::scaling::Flags::FAST_BILINEAR,
         )
         .map_err(|e| format!("Failed to create scaler: {}", e))?;
+
+        let frame_duration_ms = (1000.0 / fps).max(1.0) as i64;
 
         Ok(Self {
             input_ctx,
@@ -166,7 +174,15 @@ impl Decoder {
             is_hardware,
             state: DecoderState::Ready,
             last_decoded_frame: None,
+            forward_threshold_ms: 100, // 기본 100ms (스크럽용). 재생 시 Renderer가 5000ms로 전환
+            eof_timestamp_ms: None,
         })
+    }
+
+    /// Forward decode 임계값 설정
+    /// 썸네일 세션에서 호출하여 GOP 내 불필요한 seek 방지
+    pub fn set_forward_threshold(&mut self, threshold_ms: i64) {
+        self.forward_threshold_ms = threshold_ms;
     }
 
     /// 비디오 정보 가져오기
@@ -191,9 +207,10 @@ impl Decoder {
     }
 
     /// 특정 시간의 프레임 디코딩 (상태 머신 기반)
-    /// - 순차 재생: seek 없이 다음 프레임 디코딩 (최적 경로)
-    /// - 랜덤 접근(스크럽): seek → 키프레임에서 목표 PTS까지 디코딩 전진
-    /// - EOF/에러: DecodeResult로 구분하여 재생 중단 없이 안전 처리
+    /// - 즉시 순차 (1프레임 이내): seek 없이, PTS 확인 없이 다음 프레임 반환
+    /// - Forward decode (threshold 이내): seek 없이, PTS 확인하며 전진
+    /// - 랜덤 접근 (threshold 초과 또는 역방향): seek + PTS 확인
+    /// - EOF/에러: DecodeResult로 구분하여 안전 처리
     pub fn decode_frame(&mut self, timestamp_ms: i64) -> Result<DecodeResult, String> {
         // Error 상태에서는 마지막 프레임 반환
         if self.state == DecoderState::Error {
@@ -203,16 +220,37 @@ impl Decoder {
             };
         }
 
-        let frame_duration_ms = (1000.0 / self.fps).max(1.0) as i64;
-        let is_sequential = self.state == DecoderState::Ready
-            && timestamp_ms >= self.last_timestamp_ms
-            && timestamp_ms <= self.last_timestamp_ms + frame_duration_ms * 2;
+        // EOF 캐싱: 이미 EOF에 도달한 위치 이후의 timestamp는 즉시 반환
+        // (seek → 전체 패킷 읽기 → 다시 EOF 반복 방지)
+        if let Some(eof_ts) = self.eof_timestamp_ms {
+            if timestamp_ms >= eof_ts {
+                return match &self.last_decoded_frame {
+                    Some(f) => Ok(DecodeResult::EndOfStream(f.clone())),
+                    None => Ok(DecodeResult::EndOfStreamEmpty),
+                };
+            } else {
+                // 역방향 seek 시 EOF 마커 초기화
+                self.eof_timestamp_ms = None;
+            }
+        }
 
-        // EOF 상태에서 seek → Ready로 복구
-        if !is_sequential {
+        let frame_duration_ms = (1000.0 / self.fps).max(1.0) as i64;
+
+        // 3단계 판정: 즉시순차 / forward decode / 랜덤접근
+        let is_ahead = self.state == DecoderState::Ready
+            && timestamp_ms >= self.last_timestamp_ms;
+        let gap_ms = timestamp_ms - self.last_timestamp_ms;
+
+        // 즉시 순차: 다음 프레임 (1프레임 이내 차이)
+        let is_immediate = is_ahead && gap_ms <= frame_duration_ms * 2;
+        // Forward decode: threshold 이내 전진 (seek 불필요, PTS 확인 필요)
+        let is_forward = is_ahead && !is_immediate && gap_ms <= self.forward_threshold_ms;
+        // 그 외: 랜덤 접근 (seek 필요)
+        let needs_seek = !is_immediate && !is_forward;
+
+        if needs_seek {
             if let Err(e) = self.seek(timestamp_ms) {
                 eprintln!("Seek failed at {}ms: {}", timestamp_ms, e);
-                // seek 실패 시 마지막 프레임 반환 (재생 중단 방지)
                 return match &self.last_decoded_frame {
                     Some(_) => Ok(DecodeResult::FrameSkipped),
                     None => Ok(DecodeResult::EndOfStreamEmpty),
@@ -222,8 +260,13 @@ impl Decoder {
 
         self.last_timestamp_ms = timestamp_ms;
 
-        // Seek 후: 목표 PTS까지 디코딩 전진에 필요한 정보 계산
-        let target_info = if !is_sequential {
+        // PTS 확인 여부 결정:
+        // - 즉시 순차: PTS 확인 불필요 (다음 프레임 즉시 반환)
+        // - Forward decode: PTS 확인 필요 (목표 시간까지 전진)
+        // - 랜덤 접근: PTS 확인 필요 (키프레임에서 목표까지 전진)
+        let target_info = if is_immediate {
+            None
+        } else {
             let stream = self.input_ctx.stream(self.video_stream_index)
                 .ok_or("Video stream not found")?;
             let tb = stream.time_base();
@@ -232,8 +275,6 @@ impl Decoder {
             let tolerance_pts = (frame_duration_ms * i64::from(tb.denominator()))
                 / (i64::from(tb.numerator()) * 1000);
             Some((target_pts, tolerance_pts))
-        } else {
-            None // 순차 재생: PTS 확인 불필요, 다음 프레임 즉시 반환
         };
 
         let mut decoded_frame: Option<ffmpeg::frame::Video> = None;
@@ -288,8 +329,10 @@ impl Decoder {
                 if decoded_frame.is_some() { packets_exhausted = false; break; }
 
                 packet_count += 1;
-                if packet_count > 300 {
-                    // 안전장치: 300패킷 소진 → FrameSkipped (에러가 아님)
+                if packet_count > 3000 {
+                    // 안전장치: 3000패킷 소진 → FrameSkipped (에러가 아님)
+                    // (타임라인 썸네일 생성 등 랜덤 접근 시 긴 GOP에서도
+                    // 더 먼 위치까지 탐색할 수 있도록 상한을 상향 조정)
                     packets_exhausted = false;
                     break;
                 }
@@ -304,6 +347,8 @@ impl Decoder {
         // EOF 처리
         if hit_eof {
             self.state = DecoderState::EndOfStream;
+            // EOF 위치 기록 → 이후 같은/더 먼 timestamp에서 seek+전패킷읽기 반복 방지
+            self.eof_timestamp_ms = Some(timestamp_ms);
             return match &self.last_decoded_frame {
                 Some(f) => Ok(DecodeResult::EndOfStream(f.clone())),
                 None => Ok(DecodeResult::EndOfStreamEmpty),
@@ -327,6 +372,7 @@ impl Decoder {
     }
 
     /// 디코딩된 ffmpeg Video 프레임을 RGBA Frame으로 변환
+    /// bounds check 추가: FFmpeg이 손상된 프레임을 반환해도 panic 대신 Err 반환
     fn convert_to_rgba(&mut self, raw_frame: &ffmpeg::frame::Video, timestamp_ms: i64) -> Result<Frame, String> {
         let mut rgb_frame = ffmpeg::frame::Video::empty();
         self.scaler.run(raw_frame, &mut rgb_frame)
@@ -337,6 +383,22 @@ impl Decoder {
 
         let src_data = rgb_frame.data(0);
         let linesize = rgb_frame.stride(0);
+
+        // 안전성 검증: src_data가 충분한 크기인지 확인
+        let required_src_size = (self.height as usize - 1) * linesize + (self.width as usize * 4);
+        if src_data.len() < required_src_size {
+            return Err(format!(
+                "Frame data too small: got {} bytes, need {} ({}x{}, stride={})",
+                src_data.len(), required_src_size, self.width, self.height, linesize
+            ));
+        }
+
+        if linesize < self.width as usize * 4 {
+            return Err(format!(
+                "Invalid stride: {} < {} (width * 4)",
+                linesize, self.width as usize * 4
+            ));
+        }
 
         for y in 0..self.height as usize {
             let src_offset = y * linesize;
@@ -363,64 +425,61 @@ impl Decoder {
     }
 
     /// 썸네일 프레임 생성 (작은 해상도로 디코딩)
-    pub fn generate_thumbnail(&mut self, timestamp_ms: i64, thumb_width: u32, thumb_height: u32) -> Result<Frame, String> {
-        println!("📸 Generating thumbnail: timestamp={}ms, size={}x{}", timestamp_ms, thumb_width, thumb_height);
-
-        // seek to timestamp
-        self.seek(timestamp_ms)?;
-
-        // 패킷 읽고 디코딩
-        let mut decoded_frame: Option<ffmpeg::frame::Video> = None;
-
-        for (stream, packet) in self.input_ctx.packets() {
-            if stream.index() == self.video_stream_index {
-                self.decoder.send_packet(&packet)
-                    .map_err(|e| format!("Failed to send packet: {}", e))?;
-
-                let mut frame = ffmpeg::frame::Video::empty();
-                if self.decoder.receive_frame(&mut frame).is_ok() {
-                    decoded_frame = Some(frame);
-                    break;
+    ///
+    /// NOTE:
+    /// - 기존 구현은 seek 후 "첫 프레임"만 가져오는 단순 로직이라,
+    ///   GOP 구조에 따라 여러 timestamp가 모두 동일한 키프레임으로
+    ///   떨어지는 문제가 있었다.
+    /// - 여기서는 `decode_frame()`을 그대로 사용해 타임라인 렌더러와
+    ///   동일한 시간 매핑을 따르고, 그 결과 RGBA 프레임을
+    ///   thumb_width/height로 단순 축소(Nearest Neighbor)한다.
+    pub fn generate_thumbnail(
+        &mut self,
+        timestamp_ms: i64,
+        thumb_width: u32,
+        thumb_height: u32,
+    ) -> Result<Frame, String> {
+        // 1) decode_frame으로 해당 timestamp의 RGBA 프레임 얻기
+        let base_frame = match self.decode_frame(timestamp_ms)? {
+            DecodeResult::Frame(f) => f,
+            DecodeResult::EndOfStream(f) => f,
+            DecodeResult::FrameSkipped => {
+                match &self.last_decoded_frame {
+                    Some(f) => f.clone(),
+                    None => return Err("Failed to decode frame for thumbnail (FrameSkipped, no last frame)".into()),
                 }
             }
+            DecodeResult::EndOfStreamEmpty => {
+                return Err("Failed to decode frame for thumbnail (EndOfStreamEmpty)".into());
+            }
+        };
+
+        // 2) 크기가 이미 원하는 썸네일 크기라면 그대로 반환
+        //    (open_with_resolution으로 열었으면 스케일러가 이미 thumb 크기)
+        if base_frame.width == thumb_width && base_frame.height == thumb_height {
+            return Ok(base_frame);
         }
 
-        let frame = decoded_frame.ok_or("Failed to decode thumbnail frame")?;
+        // 3) 크기 불일치 시 Nearest-Neighbor 다운스케일 (fallback)
+        let src_w = base_frame.width as usize;
+        let src_h = base_frame.height as usize;
+        let dst_w = thumb_width as usize;
+        let dst_h = thumb_height as usize;
 
-        // 썸네일용 scaler 생성 (작은 해상도)
-        let mut thumb_scaler = ffmpeg::software::scaling::Context::get(
-            self.decoder.format(),
-            self.decoder.width(),
-            self.decoder.height(),
-            ffmpeg::format::Pixel::RGBA,
-            thumb_width,
-            thumb_height,
-            ffmpeg::software::scaling::Flags::FAST_BILINEAR,
-        )
-        .map_err(|e| format!("Failed to create thumbnail scaler: {}", e))?;
+        let mut data = vec![0u8; dst_w * dst_h * 4];
 
-        // RGBA 프레임으로 변환
-        let mut rgb_frame = ffmpeg::frame::Video::empty();
-        thumb_scaler.run(&frame, &mut rgb_frame)
-            .map_err(|e| format!("Failed to scale thumbnail: {}", e))?;
+        for y in 0..dst_h {
+            let src_y = y * src_h / dst_h;
+            for x in 0..dst_w {
+                let src_x = x * src_w / dst_w;
 
-        // 프레임 데이터 복사
-        let size = (thumb_width * thumb_height * 4) as usize;
-        let mut data = vec![0u8; size];
+                let src_index = (src_y * src_w + src_x) * 4;
+                let dst_index = (y * dst_w + x) * 4;
 
-        let src_data = rgb_frame.data(0);
-        let linesize = rgb_frame.stride(0);
-
-        for y in 0..thumb_height as usize {
-            let src_offset = y * linesize;
-            let dst_offset = y * (thumb_width as usize * 4);
-            let row_size = thumb_width as usize * 4;
-
-            data[dst_offset..dst_offset + row_size]
-                .copy_from_slice(&src_data[src_offset..src_offset + row_size]);
+                data[dst_index..dst_index + 4]
+                    .copy_from_slice(&base_frame.data[src_index..src_index + 4]);
+            }
         }
-
-        println!("✅ Thumbnail generated: {}x{}, data size={}", thumb_width, thumb_height, data.len());
 
         Ok(Frame {
             width: thumb_width,
@@ -447,6 +506,7 @@ impl Decoder {
                 self.decoder.flush();
                 // seek 성공 → Ready 상태로 복구 (EOF/Error에서 복구)
                 self.state = DecoderState::Ready;
+                self.eof_timestamp_ms = None; // EOF 마커 초기화
                 Ok(())
             }
             Err(e) => {
@@ -503,10 +563,16 @@ mod tests {
         let path = PathBuf::from("test.mp4");
         let mut decoder = Decoder::open(&path).unwrap();
 
-        let frame = decoder.decode_frame(1000);
-        assert!(frame.is_ok());
+        let result = decoder.decode_frame(1000);
+        assert!(result.is_ok());
 
-        let frame = frame.unwrap();
+        let frame = match result.unwrap() {
+            DecodeResult::Frame(f) | DecodeResult::EndOfStream(f) => f,
+            DecodeResult::FrameSkipped | DecodeResult::EndOfStreamEmpty => {
+                panic!("Expected a decoded frame, got {:?}", decoder.state());
+            }
+        };
+
         assert_eq!(frame.timestamp_ms, 1000);
         assert!(!frame.data.is_empty());
     }
@@ -543,7 +609,14 @@ mod tests {
         for timestamp in timestamps {
             println!("\n🎬 Decoding frame at {}ms...", timestamp);
             match decoder.decode_frame(timestamp) {
-                Ok(frame) => {
+                Ok(result) => {
+                    let frame = match result {
+                        DecodeResult::Frame(f) | DecodeResult::EndOfStream(f) => f,
+                        DecodeResult::FrameSkipped | DecodeResult::EndOfStreamEmpty => {
+                            panic!("Expected a decoded frame at {}ms, got {:?}", timestamp, decoder.state());
+                        }
+                    };
+
                     println!("   ✅ Frame decoded: {}x{}", frame.width, frame.height);
                     println!("   Data size: {} bytes", frame.data.len());
 

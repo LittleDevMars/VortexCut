@@ -2,12 +2,15 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Markup.Xaml;
+using Avalonia.Media;
 using VortexCut.Core.Models;
 
 namespace VortexCut.UI.Controls.Timeline;
 
 /// <summary>
-/// 개별 트랙 헤더 컨트롤
+/// 개별 트랙 헤더 컨트롤 (DaVinci Resolve 스타일)
+/// - 좌측 색상 바 + 트랙 이름 + M/S/L 토글 버튼
+/// - 더블클릭 트랙 이름 편집
 /// </summary>
 public partial class TrackHeaderControl : UserControl
 {
@@ -20,14 +23,30 @@ public partial class TrackHeaderControl : UserControl
         set
         {
             SetValue(TrackProperty, value);
-            UpdateTrackIcon();
+            UpdateDisplay();
         }
     }
 
+    // DaVinci Resolve 스타일 16색 팔레트
+    private static readonly uint[] ColorPalette =
+    {
+        0xFFE74C3C, 0xFFE67E22, 0xFFF1C40F, 0xFF2ECC71,
+        0xFF1ABC9C, 0xFF3498DB, 0xFF9B59B6, 0xFFE91E63,
+        0xFF795548, 0xFF95A5A6, 0xFF808000, 0xFF008080,
+        0xFF1A237E, 0xFF880E4F, 0xFFFF7043, 0xFFECEFF1,
+    };
+
     private Border? _resizeGrip;
-    private Border? _trackBadge;
-    private TextBlock? _trackTypeIcon;
+    private Border? _colorBar;
+    private Border? _topHighlight;
+    private TextBlock? _trackNameLabel;
+    private TextBox? _trackNameEditor;
+    private Border? _displayModeButton;
+    private TextBlock? _displayModeLabel;
+    private Avalonia.Controls.Primitives.Popup? _colorPopup;
+    private Avalonia.Controls.Primitives.UniformGrid? _colorGrid;
     private bool _isResizing;
+    private bool _isEditing;
     private Point _resizeStartPoint;
     private double _originalHeight;
 
@@ -37,24 +56,38 @@ public partial class TrackHeaderControl : UserControl
         DataContext = this;
     }
 
-    private void UpdateTrackIcon()
+    /// <summary>
+    /// 트랙 정보로 UI 업데이트 (이름, 색상 바)
+    /// </summary>
+    private void UpdateDisplay()
     {
-        if (Track != null && _trackTypeIcon != null && _trackBadge != null)
+        if (Track == null) return;
+
+        var color = ArgbToColor(Track.ColorArgb);
+
+        // 트랙 이름 (트랙 색상으로 표시)
+        if (_trackNameLabel != null)
         {
-            // 트랙 타입에 따라 아이콘 및 색상 설정
-            if (Track.Type == TrackType.Video)
-            {
-                _trackTypeIcon.Text = "🎬"; // 비디오 아이콘
-                _trackBadge.Background = new Avalonia.Media.SolidColorBrush(
-                    Avalonia.Media.Color.FromRgb(0, 122, 204)); // 파란색
-            }
-            else // Audio
-            {
-                _trackTypeIcon.Text = "🔊"; // 오디오 아이콘
-                _trackBadge.Background = new Avalonia.Media.SolidColorBrush(
-                    Avalonia.Media.Color.FromRgb(92, 184, 92)); // 초록색
-            }
+            _trackNameLabel.Text = Track.Name;
+            _trackNameLabel.Foreground = new SolidColorBrush(color);
         }
+
+        // 좌측 색상 바
+        if (_colorBar != null)
+            _colorBar.Background = new SolidColorBrush(color);
+
+        // 상단 하이라이트 (트랙 색상)
+        if (_topHighlight != null)
+            _topHighlight.Background = new SolidColorBrush(color);
+    }
+
+    private static Color ArgbToColor(uint argb)
+    {
+        byte a = (byte)((argb >> 24) & 0xFF);
+        byte r = (byte)((argb >> 16) & 0xFF);
+        byte g = (byte)((argb >> 8) & 0xFF);
+        byte b = (byte)(argb & 0xFF);
+        return Color.FromArgb(a, r, g, b);
     }
 
     private void InitializeComponent()
@@ -62,16 +95,188 @@ public partial class TrackHeaderControl : UserControl
         AvaloniaXamlLoader.Load(this);
 
         _resizeGrip = this.FindControl<Border>("ResizeGrip");
-        _trackBadge = this.FindControl<Border>("TrackBadge");
-        _trackTypeIcon = this.FindControl<TextBlock>("TrackTypeIcon");
+        _colorBar = this.FindControl<Border>("ColorBar");
+        _topHighlight = this.FindControl<Border>("TopHighlight");
+        _trackNameLabel = this.FindControl<TextBlock>("TrackNameLabel");
+        _trackNameEditor = this.FindControl<TextBox>("TrackNameEditor");
+        _displayModeButton = this.FindControl<Border>("DisplayModeButton");
+        _displayModeLabel = this.FindControl<TextBlock>("DisplayModeLabel");
+        _colorPopup = this.FindControl<Avalonia.Controls.Primitives.Popup>("ColorPopup");
+        _colorGrid = this.FindControl<Avalonia.Controls.Primitives.UniformGrid>("ColorGrid");
 
+        // Display Mode 버튼 클릭
+        if (_displayModeButton != null)
+        {
+            _displayModeButton.PointerPressed += OnDisplayModePressed;
+        }
+
+        // 리사이즈 그립 이벤트
         if (_resizeGrip != null)
         {
             _resizeGrip.PointerPressed += OnResizeGripPressed;
             _resizeGrip.PointerMoved += OnResizeGripMoved;
             _resizeGrip.PointerReleased += OnResizeGripReleased;
         }
+
+        // 색상 바 우클릭 → 색상 팔레트
+        if (_colorBar != null)
+        {
+            _colorBar.PointerPressed += OnColorBarPressed;
+        }
+
+        // 색상 팔레트 초기화
+        BuildColorPalette();
+
+        // 트랙 이름 더블클릭 → 편집 모드
+        if (_trackNameLabel != null)
+        {
+            _trackNameLabel.DoubleTapped += OnTrackNameDoubleTapped;
+        }
+
+        // 편집 완료 이벤트
+        if (_trackNameEditor != null)
+        {
+            _trackNameEditor.KeyDown += OnEditorKeyDown;
+            _trackNameEditor.LostFocus += OnEditorLostFocus;
+        }
     }
+
+    // === Display Mode 순환 ===
+
+    private void OnDisplayModePressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (Track == null) return;
+
+        // Filmstrip → Thumbnail → Minimal → Filmstrip 순환
+        Track.DisplayMode = Track.DisplayMode switch
+        {
+            ClipDisplayMode.Filmstrip => ClipDisplayMode.Thumbnail,
+            ClipDisplayMode.Thumbnail => ClipDisplayMode.Minimal,
+            ClipDisplayMode.Minimal => ClipDisplayMode.Filmstrip,
+            _ => ClipDisplayMode.Filmstrip
+        };
+
+        UpdateDisplayModeLabel();
+        e.Handled = true;
+    }
+
+    private void UpdateDisplayModeLabel()
+    {
+        if (_displayModeLabel == null || Track == null) return;
+
+        _displayModeLabel.Text = Track.DisplayMode switch
+        {
+            ClipDisplayMode.Filmstrip => "FILM",
+            ClipDisplayMode.Thumbnail => "THUMB",
+            ClipDisplayMode.Minimal => "MIN",
+            _ => "FILM"
+        };
+    }
+
+    // === 색상 팔레트 ===
+
+    private void BuildColorPalette()
+    {
+        if (_colorGrid == null) return;
+
+        foreach (var argb in ColorPalette)
+        {
+            var color = ArgbToColor(argb);
+            var swatch = new Border
+            {
+                Width = 16,
+                Height = 16,
+                Margin = new Thickness(1),
+                CornerRadius = new CornerRadius(2),
+                Background = new SolidColorBrush(color),
+                Cursor = new Cursor(StandardCursorType.Hand),
+            };
+            swatch.PointerPressed += (s, e) =>
+            {
+                if (Track == null) return;
+                Track.ColorArgb = argb;
+                UpdateDisplay();
+                if (_colorPopup != null) _colorPopup.IsOpen = false;
+            };
+            _colorGrid.Children.Add(swatch);
+        }
+    }
+
+    private void OnColorBarPressed(object? sender, PointerPressedEventArgs e)
+    {
+        var props = e.GetCurrentPoint(this).Properties;
+        if (props.IsRightButtonPressed && _colorPopup != null)
+        {
+            _colorPopup.IsOpen = true;
+            e.Handled = true;
+        }
+    }
+
+    // === 트랙 이름 편집 ===
+
+    private void OnTrackNameDoubleTapped(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (Track == null) return;
+        StartEditing();
+    }
+
+    private void StartEditing()
+    {
+        if (_trackNameLabel == null || _trackNameEditor == null || Track == null) return;
+
+        _isEditing = true;
+        _trackNameLabel.IsVisible = false;
+        _trackNameEditor.IsVisible = true;
+        _trackNameEditor.Text = Track.Name;
+        _trackNameEditor.SelectAll();
+        _trackNameEditor.Focus();
+    }
+
+    private void CommitEdit()
+    {
+        if (!_isEditing || _trackNameEditor == null || _trackNameLabel == null || Track == null) return;
+
+        _isEditing = false;
+        var newName = _trackNameEditor.Text?.Trim();
+        if (!string.IsNullOrEmpty(newName))
+        {
+            Track.Name = newName;
+            _trackNameLabel.Text = newName;
+        }
+
+        _trackNameEditor.IsVisible = false;
+        _trackNameLabel.IsVisible = true;
+    }
+
+    private void CancelEdit()
+    {
+        if (!_isEditing || _trackNameEditor == null || _trackNameLabel == null) return;
+
+        _isEditing = false;
+        _trackNameEditor.IsVisible = false;
+        _trackNameLabel.IsVisible = true;
+    }
+
+    private void OnEditorKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            CommitEdit();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            CancelEdit();
+            e.Handled = true;
+        }
+    }
+
+    private void OnEditorLostFocus(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        CommitEdit();
+    }
+
+    // === 리사이즈 그립 ===
 
     private void OnResizeGripPressed(object? sender, PointerPressedEventArgs e)
     {

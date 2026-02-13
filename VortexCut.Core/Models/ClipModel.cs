@@ -11,6 +11,11 @@ public class ClipModel
     public long DurationMs { get; set; }
     public int TrackIndex { get; set; }
 
+    /// <summary>
+    /// 프리뷰/Filmstrip용 Proxy 비디오 경로 (있으면 우선 사용)
+    /// </summary>
+    public string? ProxyFilePath { get; set; }
+
     // 클립 색상 라벨 (DaVinci Resolve 스타일)
     public uint ColorLabelArgb { get; set; } = 0; // 0 = 색상 없음
 

@@ -1,8 +1,8 @@
 # VortexCut 기술 명세서 (Technical Specification)
 
-> **작성일**: 2026-02-10
-> **버전**: 0.5.0 (Phase 2E 완료)
-> **상태**: 전문가급 타임라인 구현 완료, 메모리 관리 개선 중
+> **작성일**: 2026-02-13
+> **버전**: 0.7.0 (렌더링 파이프라인 + 타임라인 리디자인)
+> **상태**: 재생/스크럽 안정화 완료, DaVinci Resolve 스타일 타임라인 UI
 
 ## 1. 개요
 
@@ -383,24 +383,57 @@ timeline.Markers.Add(regionMarker);
 
 ## 6. 렌더링 파이프라인
 
-### 6.1 프리뷰 렌더링
+### 6.1 프리뷰 렌더링 아키텍처 (v0.7.0 재설계)
 
 ```
-┌──────────┐     ┌────────────┐     ┌────────────┐
-│ Timeline │ ──> │  Renderer  │ ──> │ WriteableBitmap │
-└──────────┘     │ (Rust FFI) │     │   (C# UI)   │
-                 └────────────┘     └─────────────┘
-                       │
-                  ┌────▼────┐
-                  │ FFmpeg  │
-                  │ Decoder │
-                  └─────────┘
+┌──────────────┐     ┌───────────────────┐     ┌─────────────────┐
+│ PreviewVM    │     │  Rust Renderer    │     │ WriteableBitmap │
+│ (C# Timer   │ ──> │  (Mutex<Renderer>)│ ──> │ (A/B 더블버퍼)  │
+│  30fps tick) │     │  ┌─────────────┐  │     └─────────────────┘
+└──────────────┘     │  │ LRU Cache   │  │
+                     │  │ 60fr/200MB  │  │
+                     │  └─────────────┘  │
+                     │  ┌─────────────┐  │
+                     │  │ DecoderCache│  │
+                     │  │ (per-file)  │  │
+                     │  └──────┬──────┘  │
+                     └─────────┼─────────┘
+                          ┌────▼────┐
+                          │ FFmpeg  │
+                          │ Decoder │
+                          └─────────┘
 ```
+
+#### 6.1.1 단일 렌더 슬롯 패턴
+재생/스크럽 모두 동시에 하나의 렌더만 진행하여 Mutex 경합 방지:
+- **재생**: `Interlocked.CompareExchange(_playbackRenderActive, 1, 0)` — 이전 렌더 완료 후 다음 틱
+- **스크럽**: `ScrubRenderLoop` + `_pendingScrubTimeMs` — latest-wins (중간 프레임 건너뜀)
+
+#### 6.1.2 forward_threshold 모드 분리
+| 모드 | forward_threshold | 용도 |
+|------|------------------|------|
+| 스크럽 | 100ms | 즉시 seek (정확한 위치) |
+| 재생 | 5000ms | forward decode 우선 (빠른 순차 재생) |
+
+`renderer_set_playback_mode(1/0)` FFI로 전환. 스크럽 시 5000ms 사용하면 FFmpeg 패킷 큐 폭증 → OOM/크래시.
+
+#### 6.1.3 Decoder 상태 머신
+```
+DecoderState: Ready → EndOfStream → Error
+DecodeResult: Frame | FrameSkipped | EndOfStream | EndOfStreamEmpty
+```
+- 에러 시: decoder drop → recreate → 1회 재시도
+- `convert_to_rgba` bounds check: src_data 크기/stride 검증 (FFmpeg 손상 프레임 방어)
+
+#### 6.1.4 LRU FrameCache (Rust)
+- **60프레임 / 200MB** 최대, key = (file_path, source_time_ms)
+- 캐시 히트 시 디코딩 건너뜀
 
 **성능 최적화:**
-- FrameCache (LRU 캐싱)
-- Background Rendering (미리 렌더링)
-- Proxy Files (저해상도 프록시)
+- LRU FrameCache (60프레임/200MB, Rust)
+- 단일 렌더 슬롯 (Mutex 경합 제거)
+- WriteableBitmap A/B 더블 버퍼링 (참조 변경으로 갱신)
+- Stopwatch 기반 재생 클럭 (누적 오차 방지)
 
 ### 6.2 최종 렌더링 (내보내기)
 
@@ -510,11 +543,46 @@ dotnet build VortexCut.sln -c Release
 - [ ] Compositor (레이어 합성)
 - [ ] AudioMixer (오디오 믹싱)
 - [ ] 기본 트랜지션
-- [ ] FrameCache (성능 최적화)
+- [x] FrameCache (성능 최적화) — LRU 60프레임/200MB, Rust Renderer
 - [ ] Undo/Redo
-- [ ] 프로젝트 저장/불러오기 (JSON 직렬화)
+- [x] 프로젝트 저장/불러오기 (JSON 직렬화) — ProjectSerializer
 
-### Phase 3: 고급 기능 (8-10주)
+### Phase 3: 렌더링 파이프라인 & 타임라인 리디자인 - ✅ 완료
+
+#### Phase 3A: 렌더링 파이프라인 재설계 (2026-02-11~13) - ✅ 완료
+- [x] Decoder 상태 머신 (DecoderState + DecodeResult)
+- [x] LRU FrameCache (60프레임/200MB, Rust)
+- [x] Renderer fallback (last_rendered_frame / black_frame)
+- [x] Stopwatch 기반 재생 클럭 (누적 오차 방지)
+- [x] renderer_clear_cache / renderer_get_cache_stats FFI
+- [x] 단일 렌더 슬롯 (재생: CompareExchange, 스크럽: ScrubRenderLoop)
+- [x] forward_threshold 모드 분리 (스크럽=100ms, 재생=5000ms)
+- [x] renderer_set_playback_mode FFI
+- [x] convert_to_rgba bounds check (FFmpeg 손상 프레임 방어)
+- [x] Decoder 에러 복구 (drop → recreate → 1회 재시도)
+- [x] WriteableBitmap A/B 더블 버퍼링
+
+#### Phase 3B: DaVinci Resolve 스타일 타임라인 헤더 (Phase A) - ✅ 완료
+- [x] HeaderHeight 60px 동기화 (Grid Row와 일치)
+- [x] DaVinci Resolve 스타일 시간 눈금 (동적 소눈금 높이, M:SS 포맷)
+- [x] SMPTE 타임코드 동적 FPS
+- [x] 인터랙티브 줌 슬라이더 (클릭/드래그/더블클릭=FitToWindow)
+- [x] RenderResourceCache 적용 (모든 Typeface/Brush/Pen 캐싱)
+- [x] 줌 범위 확장 (0.001~5.0 px/ms, 30분까지 표시 가능)
+
+#### Phase 3C: 트랙 헤더 UI 리디자인 (Phase B) - ✅ 완료
+- [x] TrackHeaderControl XAML 재설계 (M/S/L 버튼, 색상바)
+- [x] 트랙 색상 선택 팝업 (16색 팔레트)
+- [x] PathIcon 벡터 아이콘 (비디오/오디오 구분)
+- [x] 트랙 이름 편집 (더블클릭 인라인)
+
+#### Phase 3D: 썸네일 스트립 & 오디오 파형 - ✅ 완료
+- [x] ThumbnailStripService (3-tier LOD: Low/Medium/High)
+- [x] ThumbnailSession FFI (디코더 1회 Open, N프레임 생성)
+- [x] AudioWaveformService (Rust FFI extract_audio_peaks)
+- [x] 실제 오디오 파형 렌더링 (StreamGeometry, 반파/전파)
+
+### Phase 4: 고급 기능 (예정)
 
 - [ ] Subtitle 파서/렌더러
 - [ ] Whisper 통합
@@ -524,6 +592,9 @@ dotnet build VortexCut.sln -c Release
 - [ ] 자막 편집 UI
 - [ ] 효과 패널 UI
 - [ ] 내보내기 설정 UI
+- [ ] Compositor (레이어 합성)
+- [ ] AudioMixer (오디오 믹싱)
+- [ ] Undo/Redo
 
 ## 9. 테스트 전략
 
@@ -784,7 +855,7 @@ if (width * height * 4 > MAX_FRAME_SIZE) {
 
 ---
 
-**마지막 업데이트**: 2026-02-10 (Phase 2E 완료)
-**작성자**: Claude Sonnet 4.5
-**Phase 2E 구현 기간**: 2026-02-07 ~ 2026-02-10 (4일)
-**추가된 코드 라인**: ~3,500 라인 (모델 + UI + 테스트)
+**마지막 업데이트**: 2026-02-13 (Phase 3 완료: 렌더링 파이프라인 + 타임라인 리디자인)
+**작성자**: Claude Sonnet 4.5 / Claude Opus 4.6
+**Phase 3 구현 기간**: 2026-02-11 ~ 2026-02-13 (3일)
+**추가된 코드 라인**: ~2,600 라인 (렌더링 + UI 리디자인 + Rust FFI)

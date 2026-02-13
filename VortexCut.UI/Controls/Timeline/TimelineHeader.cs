@@ -8,29 +8,46 @@ using VortexCut.UI.ViewModels;
 namespace VortexCut.UI.Controls.Timeline;
 
 /// <summary>
-/// 타임라인 상단 헤더 (시간 눈금, 마커)
+/// 타임라인 상단 헤더 (시간 눈금, 마커, 줌 슬라이더)
+/// DaVinci Resolve 스타일 디자인 (Phase A 리디자인)
 /// </summary>
 public class TimelineHeader : Control
 {
-    private const double HeaderHeight = 80;
+    // Grid Row 높이 60px과 동기화 (A-1)
+    private const double HeaderHeight = 60;
     private const double TrackHeaderWidth = 60; // Grid Column 0 너비 (트랙 리스트)
+
+    // 줌 슬라이더 상수 (A-4) - 트랙 헤더 컬럼(0~60px) 안에 배치
+    private const double ZoomBarX = 6;
+    private const double ZoomBarWidth = 48;
+    private const double ZoomBarHeight = 5;
+    private const double ZoomBarY = 48; // 헤더 하단
+    private const double ZoomMinPxPerMs = 0.001;
+    private const double ZoomMaxPxPerMs = 1.0;
+
+    // 상태
     private TimelineViewModel? _viewModel;
     private double _pixelsPerMs = 0.1;
     private double _scrollOffsetX = 0;
     private MarkerModel? _hoveredMarker;
     private bool _isDraggingPlayhead = false;
+    private bool _isDraggingZoom = false;
+
+    /// <summary>
+    /// 줌 변경 콜백 (TimelineCanvas에서 설정)
+    /// </summary>
+    public Action<double>? OnZoomChanged { get; set; }
 
     public void SetViewModel(TimelineViewModel viewModel)
     {
         _viewModel = viewModel;
-
         // 마커 추가/삭제 시 자동 새로고침
         _viewModel.Markers.CollectionChanged += (s, e) => InvalidateVisual();
     }
 
     public void SetZoom(double pixelsPerMs)
     {
-        _pixelsPerMs = Math.Clamp(pixelsPerMs, 0.01, 5.0); // 최대 500%까지 확대
+        _pixelsPerMs = Math.Clamp(pixelsPerMs, 0.001, 5.0);
         InvalidateVisual();
     }
 
@@ -44,57 +61,41 @@ public class TimelineHeader : Control
     {
         base.Render(context);
 
-        // 프로페셔널 그라디언트 배경 (DaVinci Resolve 스타일)
+        // 배경 그라디언트 (캐시된 불변 브러시 A-5)
         var headerRect = new Rect(0, 0, Bounds.Width, HeaderHeight);
-        var headerGradient = new LinearGradientBrush
-        {
-            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
-            EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
-            GradientStops = new GradientStops
-            {
-                new GradientStop(Color.Parse("#3A3A3C"), 0),
-                new GradientStop(Color.Parse("#2D2D30"), 0.5),
-                new GradientStop(Color.Parse("#252527"), 1)
-            }
-        };
-        context.FillRectangle(headerGradient, headerRect);
+        context.FillRectangle(RenderResourceCache.HeaderBgGradient, headerRect);
 
-        // 하단 하이라이트 라인 (미묘한 3D 효과)
-        var highlightPen = new Pen(
-            new SolidColorBrush(Color.FromArgb(40, 255, 255, 255)),
-            1);
-        context.DrawLine(highlightPen,
+        // 하단 하이라이트 라인 (캐시 A-5)
+        context.DrawLine(RenderResourceCache.HeaderHighlightPen,
             new Point(0, HeaderHeight - 1),
             new Point(Bounds.Width, HeaderHeight - 1));
 
-        // 시간 눈금
+        // 시간 눈금 (A-2 리디자인)
         DrawTimeRuler(context);
 
-        // 마커 (Phase 2D)
         if (_viewModel != null)
         {
             DrawMarkers(context);
             DrawInOutPoints(context);
-            DrawPlayhead(context); // Playhead 렌더링
+            DrawPlayhead(context);
         }
 
-        // 상태 정보 표시 (우측 상단)
+        // 상태 정보 (우상단, A-3 동적 FPS)
         DrawStatusInfo(context);
 
-        // Zoom 바 시각화 (좌측 하단)
-        DrawZoomBar(context);
+        // 줌 슬라이더 (좌하단, A-4 인터랙티브)
+        DrawZoomSlider(context);
     }
 
+    /// <summary>
+    /// 상태 정보 (우상단): 줌%, SMPTE 타임코드, 클립 수
+    /// </summary>
     private void DrawStatusInfo(DrawingContext context)
     {
         if (_viewModel == null) return;
 
-        // 줌 레벨 표시
-        var zoomPercent = (int)(_pixelsPerMs * 100);
-        var zoomText = $"Zoom: {zoomPercent}%";
-
-        // SMPTE 타임코드 (HH:MM:SS:FF)
-        int fps = 30;
+        // SMPTE 타임코드 (A-3: 동적 FPS)
+        int fps = _viewModel.ProjectFps;
         long totalFrames = (_viewModel.CurrentTimeMs * fps) / 1000;
         int frames = (int)(totalFrames % fps);
         int seconds = (int)((totalFrames / fps) % 60);
@@ -102,227 +103,132 @@ public class TimelineHeader : Control
         int hours = (int)(totalFrames / (fps * 3600));
         var timecodeText = $"{hours:D2}:{minutes:D2}:{seconds:D2}:{frames:D2}";
 
-        // 클립 개수
-        var clipCountText = $"Clips: {_viewModel.Clips.Count}";
-
-        var typeface = new Typeface("Segoe UI", FontStyle.Normal, FontWeight.SemiBold);
-        var fontSize = 10.0;
-
-        // 배경 박스 (프로페셔널 스타일)
-        var infoText = $"{zoomText}  |  {timecodeText}  |  {clipCountText}";
+        var infoText = $"{timecodeText}  |  {_viewModel.Clips.Count} clips";
         var text = new FormattedText(
             infoText,
             System.Globalization.CultureInfo.CurrentCulture,
             FlowDirection.LeftToRight,
-            typeface,
-            fontSize,
-            Brushes.White);
+            RenderResourceCache.SegoeUISemiBold, // 캐시 (A-5)
+            10.0,
+            RenderResourceCache.WhiteBrush);
 
-        var textX = Bounds.Width - text.Width - 15;
-        var textY = 8;
+        var textX = Bounds.Width - text.Width - 12;
+        var textY = 3.0;
 
-        // 배경 (그라디언트 + 테두리)
-        var bgRect = new Rect(textX - 8, textY - 4, text.Width + 16, text.Height + 8);
-        var bgGradient = new LinearGradientBrush
-        {
-            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
-            EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
-            GradientStops = new GradientStops
-            {
-                new GradientStop(Color.FromArgb(200, 45, 45, 48), 0),
-                new GradientStop(Color.FromArgb(220, 35, 35, 38), 1)
-            }
-        };
-        context.FillRectangle(bgGradient, bgRect);
+        // 배경 (캐시된 브러시 A-5)
+        var bgRect = new Rect(textX - 6, textY - 2, text.Width + 12, text.Height + 4);
+        context.FillRectangle(RenderResourceCache.StatusInfoBgBrush, bgRect);
+        context.DrawRectangle(RenderResourceCache.StatusInfoBorderPen, bgRect);
 
-        // 테두리 (파란색 하이라이트)
-        var borderPen = new Pen(
-            new SolidColorBrush(Color.FromArgb(150, 0, 122, 204)),
-            1);
-        context.DrawRectangle(borderPen, bgRect);
-
-        // 텍스트
         context.DrawText(text, new Point(textX, textY));
     }
 
     /// <summary>
-    /// Zoom 바 시각화 (좌측 하단)
+    /// 줌 슬라이더 (좌하단, 인터랙티브 A-4)
+    /// 클릭/드래그로 줌 레벨 조절, 더블클릭으로 맞춤 보기
     /// </summary>
-    private void DrawZoomBar(DrawingContext context)
+    private void DrawZoomSlider(DrawingContext context)
     {
-        const double barWidth = 150;
-        const double barHeight = 8;
-        const double barX = 15;
-        const double barY = HeaderHeight - 20;
+        // 줌 정규화 (로그 스케일)
+        double normalizedZoom = GetNormalizedZoom();
 
-        // Zoom 범위: 0.01 ~ 1.0
-        // 로그 스케일로 표시 (0.01이 왼쪽, 1.0이 오른쪽)
-        double minZoom = 0.01;
-        double maxZoom = 1.0;
-        double normalizedZoom = (Math.Log10(_pixelsPerMs) - Math.Log10(minZoom)) /
-                                (Math.Log10(maxZoom) - Math.Log10(minZoom));
-        normalizedZoom = Math.Clamp(normalizedZoom, 0, 1);
+        // 배경 트랙 (캐시 A-5)
+        var trackRect = new Rect(ZoomBarX, ZoomBarY, ZoomBarWidth, ZoomBarHeight);
+        context.FillRectangle(RenderResourceCache.ZoomTrackBrush, trackRect);
+        context.DrawRectangle(RenderResourceCache.ZoomTrackBorderPen, trackRect);
 
-        // 배경 트랙 (그라디언트)
-        var trackRect = new Rect(barX, barY, barWidth, barHeight);
-        var trackGradient = new LinearGradientBrush
+        // 채워진 부분 (줌 레벨, 캐시된 그라디언트 A-5)
+        var fillWidth = ZoomBarWidth * normalizedZoom;
+        if (fillWidth > 0)
         {
-            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
-            EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative),
-            GradientStops = new GradientStops
-            {
-                new GradientStop(Color.FromArgb(180, 40, 40, 42), 0),
-                new GradientStop(Color.FromArgb(200, 50, 50, 52), 1)
-            }
-        };
-        context.FillRectangle(trackGradient, trackRect);
+            var fillRect = new Rect(ZoomBarX, ZoomBarY, fillWidth, ZoomBarHeight);
+            context.FillRectangle(RenderResourceCache.ZoomFillGradient, fillRect);
+        }
 
-        // 테두리
-        var trackBorderPen = new Pen(
-            new SolidColorBrush(Color.FromArgb(150, 80, 80, 82)),
-            1);
-        context.DrawRectangle(trackBorderPen, trackRect);
-
-        // 채워진 부분 (Zoom 레벨)
-        var fillWidth = barWidth * normalizedZoom;
-        var fillRect = new Rect(barX, barY, fillWidth, barHeight);
-        var fillGradient = new LinearGradientBrush
+        // 글로우 효과 (캐시 A-5)
+        if (fillWidth > 0)
         {
-            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
-            EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative),
-            GradientStops = new GradientStops
-            {
-                new GradientStop(Color.FromRgb(0, 122, 204), 0),
-                new GradientStop(Color.FromRgb(28, 151, 234), 0.5),
-                new GradientStop(Color.FromRgb(80, 220, 255), 1)
-            }
-        };
-        context.FillRectangle(fillGradient, fillRect);
+            var glowRect = new Rect(ZoomBarX, ZoomBarY - 1, fillWidth, ZoomBarHeight + 2);
+            context.FillRectangle(RenderResourceCache.ZoomGlowBrush, glowRect);
+        }
 
-        // 글로우 효과
-        var glowRect = new Rect(barX, barY - 1, fillWidth, barHeight + 2);
-        context.FillRectangle(
-            new SolidColorBrush(Color.FromArgb(40, 80, 220, 255)),
-            glowRect);
+        // 썸 (현재 위치 핸들)
+        var thumbX = ZoomBarX + fillWidth;
+        var thumbRect = new Rect(thumbX - 3, ZoomBarY - 2, 6, ZoomBarHeight + 4);
+        context.FillRectangle(RenderResourceCache.ZoomThumbBrush, thumbRect);
+        context.DrawRectangle(RenderResourceCache.ZoomThumbBorderPen, thumbRect);
 
-        // 썸 (현재 위치 표시)
-        var thumbX = barX + fillWidth;
-        var thumbRect = new Rect(thumbX - 3, barY - 2, 6, barHeight + 4);
-        var thumbGradient = new LinearGradientBrush
-        {
-            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
-            EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
-            GradientStops = new GradientStops
-            {
-                new GradientStop(Color.FromRgb(255, 255, 255), 0),
-                new GradientStop(Color.FromRgb(200, 200, 200), 1)
-            }
-        };
-        context.FillRectangle(thumbGradient, thumbRect);
-
-        // 썸 테두리
-        var thumbBorderPen = new Pen(
-            new SolidColorBrush(Color.FromRgb(80, 220, 255)),
-            1.5);
-        context.DrawRectangle(thumbBorderPen, thumbRect);
-
-        // 라벨 (ZOOM)
-        var labelTypeface = new Typeface("Segoe UI", FontStyle.Normal, FontWeight.Bold);
+        // 줌 % 표시 (슬라이더 위, 0.1 px/ms = 100% 기준)
+        var zoomPct = (int)(_pixelsPerMs / 0.1 * 100);
         var label = new FormattedText(
-            "ZOOM",
+            $"{zoomPct}%",
             System.Globalization.CultureInfo.CurrentCulture,
             FlowDirection.LeftToRight,
-            labelTypeface,
-            9,
-            new SolidColorBrush(Color.FromArgb(180, 200, 200, 200)));
-
-        context.DrawText(label, new Point(barX, barY - 12));
-
-        // 범위 표시 (최소/최대)
-        var minLabel = new FormattedText(
-            "1%",
-            System.Globalization.CultureInfo.CurrentCulture,
-            FlowDirection.LeftToRight,
-            new Typeface("Segoe UI", FontStyle.Normal, FontWeight.Normal),
+            RenderResourceCache.SegoeUIBold,
             8,
-            new SolidColorBrush(Color.FromArgb(150, 150, 150, 150)));
+            RenderResourceCache.ZoomLabelBrush);
 
-        var maxLabel = new FormattedText(
-            "100%",
-            System.Globalization.CultureInfo.CurrentCulture,
-            FlowDirection.LeftToRight,
-            new Typeface("Segoe UI", FontStyle.Normal, FontWeight.Normal),
-            8,
-            new SolidColorBrush(Color.FromArgb(150, 150, 150, 150)));
-
-        context.DrawText(minLabel, new Point(barX, barY + barHeight + 2));
-        context.DrawText(maxLabel, new Point(barX + barWidth - maxLabel.Width, barY + barHeight + 2));
+        context.DrawText(label, new Point(ZoomBarX, ZoomBarY - 11));
     }
 
     /// <summary>
-    /// 줌 레벨에 적응하는 동적 시간 눈금
-    /// - 줌 아웃: 10초/30초/1분 간격, 줌 인: 100ms/500ms 간격
-    /// - 보이는 영역만 렌더링 (무한 타임라인 대응)
+    /// DaVinci Resolve 스타일 시간 눈금 (A-2 리디자인)
+    /// - 통일된 M:SS 라벨 포맷
+    /// - 줌 레벨 적응 동적 눈금 높이
+    /// - 텍스트 배경 제거 (깔끔한 직접 표시)
     /// </summary>
     private void DrawTimeRuler(DrawingContext context)
     {
-        var typeface = new Typeface("Segoe UI", FontStyle.Normal, FontWeight.SemiBold);
-        var fontSize = 10;
-
-        // 보이는 시간 범위 계산
+        // 보이는 시간 범위
         long visibleStartMs = Math.Max(0, XToTime(0));
-        long visibleEndMs = XToTime(Bounds.Width) + 1000; // 여유분
+        long visibleEndMs = XToTime(Bounds.Width) + 1000;
 
-        // 줌 레벨에 따라 최적 눈금 간격 선택 (주눈금 ~100-180px 간격 목표)
+        // 줌 레벨에 따라 최적 눈금 간격 선택
         long majorIntervalMs = CalculateMajorInterval();
         long minorIntervalMs = majorIntervalMs / 5;
-        if (minorIntervalMs < 10) minorIntervalMs = 10; // 최소 10ms
+        if (minorIntervalMs < 10) minorIntervalMs = 10;
 
-        // 소눈금
-        var smallTickPen = new Pen(new SolidColorBrush(Color.Parse("#555555")), 1);
+        // 소눈금 (캐시된 펜 A-5)
         long firstMinor = (visibleStartMs / minorIntervalMs) * minorIntervalMs;
         for (long timeMs = firstMinor; timeMs <= visibleEndMs; timeMs += minorIntervalMs)
         {
-            if (timeMs % majorIntervalMs == 0) continue; // 주눈금 위치는 건너뜀
+            if (timeMs % majorIntervalMs == 0) continue;
 
             double x = TimeToX(timeMs);
-            if (x < 0 || x > Bounds.Width) continue;
+            if (x < TrackHeaderWidth - 5 || x > Bounds.Width) continue;
 
-            context.DrawLine(smallTickPen,
-                new Point(x, HeaderHeight - 5),
-                new Point(x, HeaderHeight));
+            // 줌 레벨에 따른 동적 소눈금 높이 (A-2)
+            double minorHeight = _pixelsPerMs > 0.3 ? 8 : (_pixelsPerMs > 0.05 ? 6 : 4);
+
+            context.DrawLine(RenderResourceCache.MinorTickPen,
+                new Point(x, HeaderHeight - 2 - minorHeight),
+                new Point(x, HeaderHeight - 2));
         }
 
-        // 주눈금 + 시간 라벨
-        var bigTickPen = new Pen(new SolidColorBrush(Color.Parse("#AAAAAA")), 1.5);
+        // 주눈금 + 시간 라벨 (캐시된 펜 A-5)
         long firstMajor = (visibleStartMs / majorIntervalMs) * majorIntervalMs;
         for (long timeMs = firstMajor; timeMs <= visibleEndMs; timeMs += majorIntervalMs)
         {
             double x = TimeToX(timeMs);
-            if (x < 0 || x > Bounds.Width) continue;
+            if (x < TrackHeaderWidth - 5 || x > Bounds.Width) continue;
 
-            // 주눈금 (12px)
-            context.DrawLine(bigTickPen,
-                new Point(x, HeaderHeight - 12),
-                new Point(x, HeaderHeight));
+            // 주눈금 (14px, 캐시 A-5)
+            context.DrawLine(RenderResourceCache.MajorTickPen,
+                new Point(x, HeaderHeight - 16),
+                new Point(x, HeaderHeight - 2));
 
-            // 시간 라벨
+            // 시간 라벨 (A-2: 통일된 M:SS 포맷, 배경 없이 직접 표시)
             var label = FormatTimeLabel(timeMs, majorIntervalMs);
             var text = new FormattedText(
                 label,
                 System.Globalization.CultureInfo.CurrentCulture,
                 FlowDirection.LeftToRight,
-                typeface,
-                fontSize,
-                Brushes.White);
+                RenderResourceCache.SegoeUISemiBold, // 캐시 (A-5)
+                11,
+                RenderResourceCache.WhiteBrush);
 
-            // 텍스트 배경 (반투명)
-            var textBgRect = new Rect(x + 1, HeaderHeight - 26, text.Width + 4, text.Height + 2);
-            context.FillRectangle(
-                new SolidColorBrush(Color.FromArgb(150, 45, 45, 48)),
-                textBgRect);
-
-            context.DrawText(text, new Point(x + 3, HeaderHeight - 25));
+            // 라벨을 눈금 바로 위에 표시 (A-2: 배경 박스 제거)
+            context.DrawText(text, new Point(x + 3, HeaderHeight - 30));
         }
     }
 
@@ -335,7 +241,6 @@ public class TimelineHeader : Control
         double targetPx = 140.0;
         double targetMs = targetPx / _pixelsPerMs;
 
-        // "보기 좋은" 간격 목록 (ms)
         long[] nice = { 100, 200, 500, 1000, 2000, 5000, 10000, 15000,
                         30000, 60000, 120000, 300000, 600000, 1800000, 3600000 };
 
@@ -343,38 +248,45 @@ public class TimelineHeader : Control
         {
             if (interval >= targetMs) return interval;
         }
-        return 3600000; // 1시간
+        return 3600000;
     }
 
     /// <summary>
-    /// 시간 라벨 포맷 (줌 레벨별 적응)
-    /// 짧은 간격: "0.1s", "1.5s" / 긴 간격: "1:30", "10:00"
+    /// 시간 라벨 포맷 (A-2: DaVinci Resolve 스타일 통일 포맷)
+    /// - sub-second: "0:00.1", "0:00.5"
+    /// - under 1min: "0:05", "0:30"
+    /// - under 1hr: "1:30", "5:00"
+    /// - over 1hr: "1:00:00"
     /// </summary>
     private static string FormatTimeLabel(long timeMs, long intervalMs)
     {
         if (intervalMs < 1000)
         {
-            // ms 단위: "0.0s", "0.5s" 등
-            return $"{timeMs / 1000.0:F1}s";
+            // 1초 미만 간격: "0:00.1", "0:00.5" 형식
+            int mins = (int)(timeMs / 60000);
+            double secs = (timeMs % 60000) / 1000.0;
+            return $"{mins}:{secs:00.0}";
         }
-        if (timeMs < 60000)
-        {
-            // 1분 미만: "0s", "5s", "30s"
-            return $"{timeMs / 1000}s";
-        }
-        // 1분 이상: "M:SS"
-        int minutes = (int)(timeMs / 60000);
-        int seconds = (int)((timeMs % 60000) / 1000);
+
+        long totalSecs = timeMs / 1000;
+        int minutes = (int)(totalSecs / 60);
+        int seconds = (int)(totalSecs % 60);
+
         if (timeMs >= 3600000)
         {
-            // 1시간 이상: "H:MM:SS"
+            // 1시간 이상: "1:00:00"
             int hours = minutes / 60;
             minutes %= 60;
             return $"{hours}:{minutes:D2}:{seconds:D2}";
         }
+
+        // 기본: "0:05", "0:30", "1:30", "5:00"
         return $"{minutes}:{seconds:D2}";
     }
 
+    /// <summary>
+    /// 마커 렌더링 (A-1: Y좌표 조정)
+    /// </summary>
     private void DrawMarkers(DrawingContext context)
     {
         if (_viewModel == null) return;
@@ -382,17 +294,14 @@ public class TimelineHeader : Control
         foreach (var marker in _viewModel.Markers)
         {
             double x = TimeToX(marker.TimeMs);
-
-            // 화면 밖이면 스킵 (성능 최적화)
             if (x < -20 || x > Bounds.Width + 20)
                 continue;
 
             var color = ArgbToColor(marker.ColorArgb);
-            var brush = new SolidColorBrush(color);
-            var size = marker.Type == MarkerType.Chapter ? 14.0 : 10.0;
-            var yTop = 18.0;
+            var size = marker.Type == MarkerType.Chapter ? 12.0 : 8.0;
+            var yTop = 6.0; // A-1: 60px 헤더에 맞춤 (80px일 때 18 → 6)
 
-            // 마커 그림자 (깊이감)
+            // 마커 그림자 (캐시 A-5)
             var shadowGeometry = new StreamGeometry();
             using (var ctx = shadowGeometry.Open())
             {
@@ -402,11 +311,11 @@ public class TimelineHeader : Control
                 ctx.EndFigure(true);
             }
             context.DrawGeometry(
-                new SolidColorBrush(Color.FromArgb(120, 0, 0, 0)),
+                RenderResourceCache.HeaderPlayheadShadowBrush, // 캐시 (A-5)
                 null,
                 shadowGeometry);
 
-            // 마커 본체 (더 밝고 선명하게)
+            // 마커 본체 (동적 그라디언트 - 풀 사용 A-5)
             var geometry = new StreamGeometry();
             using (var ctx = geometry.Open())
             {
@@ -416,135 +325,20 @@ public class TimelineHeader : Control
                 ctx.EndFigure(true);
             }
 
-            // 마커 내부 그라디언트
-            var markerGradient = new LinearGradientBrush
-            {
-                StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
-                EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
-                GradientStops = new GradientStops
-                {
-                    new GradientStop(color, 0),
-                    new GradientStop(Color.FromRgb(
-                        (byte)Math.Max(0, color.R - 40),
-                        (byte)Math.Max(0, color.G - 40),
-                        (byte)Math.Max(0, color.B - 40)), 1)
-                }
-            };
+            var markerGradient = RenderResourceCache.GetVerticalGradient(
+                color,
+                Color.FromRgb(
+                    (byte)Math.Max(0, color.R - 40),
+                    (byte)Math.Max(0, color.G - 40),
+                    (byte)Math.Max(0, color.B - 40)));
 
-            context.DrawGeometry(markerGradient, new Pen(Brushes.White, 0.8), geometry);
+            var markerBorderPen = RenderResourceCache.GetPen(Colors.White, 0.8);
+            context.DrawGeometry(markerGradient, markerBorderPen, geometry);
 
-            // Region 마커: 프로페셔널 스타일 범위 표시 (DaVinci Resolve 스타일)
+            // Region 마커
             if (marker.IsRegion)
             {
-                double endX = TimeToX(marker.EndTimeMs);
-
-                // 범위 배경 (반투명 그라디언트)
-                var regionRect = new Rect(x, yTop + size, endX - x, HeaderHeight - yTop - size);
-                var regionBgGradient = new LinearGradientBrush
-                {
-                    StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
-                    EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
-                    GradientStops = new GradientStops
-                    {
-                        new GradientStop(Color.FromArgb(50, color.R, color.G, color.B), 0),
-                        new GradientStop(Color.FromArgb(30, color.R, color.G, color.B), 0.5),
-                        new GradientStop(Color.FromArgb(15, color.R, color.G, color.B), 1)
-                    }
-                };
-                context.FillRectangle(regionBgGradient, regionRect);
-
-                // 범위 테두리 (좌우 수직선)
-                var edgePen = new Pen(
-                    new SolidColorBrush(Color.FromArgb(80, color.R, color.G, color.B)),
-                    1.5)
-                {
-                    DashStyle = new DashStyle(new double[] { 2, 2 }, 0)
-                };
-                context.DrawLine(edgePen,
-                    new Point(x, yTop + size),
-                    new Point(x, HeaderHeight));
-                context.DrawLine(edgePen,
-                    new Point(endX, yTop + size),
-                    new Point(endX, HeaderHeight));
-
-                // 상단 연결선 (더 두껍고 그라디언트 + 글로우)
-                var lineGlowPen = new Pen(
-                    new SolidColorBrush(Color.FromArgb(60, color.R, color.G, color.B)),
-                    5);
-                context.DrawLine(lineGlowPen, new Point(x, 30), new Point(endX, 30));
-
-                var linePen = new Pen(
-                    new LinearGradientBrush
-                    {
-                        StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
-                        EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative),
-                        GradientStops = new GradientStops
-                        {
-                            new GradientStop(color, 0),
-                            new GradientStop(Color.FromArgb(220, color.R, color.G, color.B), 0.5),
-                            new GradientStop(color, 1)
-                        }
-                    },
-                    3);
-                context.DrawLine(linePen, new Point(x, 30), new Point(endX, 30));
-
-                // 끝 삼각형 (그림자 포함)
-                var endShadowGeometry = new StreamGeometry();
-                using (var ctx = endShadowGeometry.Open())
-                {
-                    ctx.BeginFigure(new Point(endX + 1, yTop + 1), true);
-                    ctx.LineTo(new Point(endX - size / 2 + 1, yTop + size + 1));
-                    ctx.LineTo(new Point(endX + size / 2 + 1, yTop + size + 1));
-                    ctx.EndFigure(true);
-                }
-                context.DrawGeometry(
-                    new SolidColorBrush(Color.FromArgb(120, 0, 0, 0)),
-                    null,
-                    endShadowGeometry);
-
-                var endGeometry = new StreamGeometry();
-                using (var ctx = endGeometry.Open())
-                {
-                    ctx.BeginFigure(new Point(endX, yTop), true);
-                    ctx.LineTo(new Point(endX - size / 2, yTop + size));
-                    ctx.LineTo(new Point(endX + size / 2, yTop + size));
-                    ctx.EndFigure(true);
-                }
-                context.DrawGeometry(markerGradient, new Pen(Brushes.White, 0.8), endGeometry);
-
-                // Region 라벨 (중앙에 표시)
-                if (endX - x > 50 && !string.IsNullOrWhiteSpace(marker.Name))
-                {
-                    var labelTypeface = new Typeface("Segoe UI", FontStyle.Normal, FontWeight.SemiBold);
-                    var label = new FormattedText(
-                        marker.Name,
-                        System.Globalization.CultureInfo.CurrentCulture,
-                        FlowDirection.LeftToRight,
-                        labelTypeface,
-                        10,
-                        Brushes.White);
-
-                    var labelX = x + (endX - x) / 2 - label.Width / 2;
-                    var labelY = 35;
-
-                    // 라벨 배경
-                    var labelBgRect = new Rect(labelX - 4, labelY - 2, label.Width + 8, label.Height + 4);
-                    var labelBgGradient = new LinearGradientBrush
-                    {
-                        StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
-                        EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
-                        GradientStops = new GradientStops
-                        {
-                            new GradientStop(Color.FromArgb(220, color.R, color.G, color.B), 0),
-                            new GradientStop(Color.FromArgb(200, (byte)Math.Max(0, color.R - 40),
-                                (byte)Math.Max(0, color.G - 40), (byte)Math.Max(0, color.B - 40)), 1)
-                        }
-                    };
-                    context.FillRectangle(labelBgGradient, labelBgRect);
-                    context.DrawRectangle(new Pen(Brushes.White, 1), labelBgRect);
-
-                    context.DrawText(label, new Point(labelX, labelY));
-                }
+                DrawRegionMarker(context, marker, x, yTop, size, color, markerGradient);
             }
         }
 
@@ -555,32 +349,106 @@ public class TimelineHeader : Control
         }
     }
 
+    /// <summary>
+    /// Region 마커 범위 표시 (A-1: Y좌표 조정, A-5: 캐시)
+    /// </summary>
+    private void DrawRegionMarker(DrawingContext context, MarkerModel marker,
+        double x, double yTop, double size, Color color, IBrush markerGradient)
+    {
+        double endX = TimeToX(marker.EndTimeMs);
+
+        // 범위 배경 (동적 색상 → 풀 사용 A-5)
+        var regionRect = new Rect(x, yTop + size, endX - x, HeaderHeight - yTop - size - 2);
+        var regionBg = RenderResourceCache.GetSolidBrush(
+            Color.FromArgb(35, color.R, color.G, color.B));
+        context.FillRectangle(regionBg, regionRect);
+
+        // 범위 좌우 수직선 (동적 색상 A-5)
+        var edgePen = RenderResourceCache.GetPen(
+            Color.FromArgb(80, color.R, color.G, color.B), 1);
+        context.DrawLine(edgePen,
+            new Point(x, yTop + size),
+            new Point(x, HeaderHeight - 2));
+        context.DrawLine(edgePen,
+            new Point(endX, yTop + size),
+            new Point(endX, HeaderHeight - 2));
+
+        // 상단 연결선
+        double lineY = yTop + size + 4;
+        var lineGlowPen = RenderResourceCache.GetPen(
+            Color.FromArgb(60, color.R, color.G, color.B), 4);
+        context.DrawLine(lineGlowPen, new Point(x, lineY), new Point(endX, lineY));
+
+        var linePen = RenderResourceCache.GetPen(color, 2);
+        context.DrawLine(linePen, new Point(x, lineY), new Point(endX, lineY));
+
+        // 끝 삼각형
+        var endShadowGeometry = new StreamGeometry();
+        using (var ctx = endShadowGeometry.Open())
+        {
+            ctx.BeginFigure(new Point(endX + 1, yTop + 1), true);
+            ctx.LineTo(new Point(endX - size / 2 + 1, yTop + size + 1));
+            ctx.LineTo(new Point(endX + size / 2 + 1, yTop + size + 1));
+            ctx.EndFigure(true);
+        }
+        context.DrawGeometry(
+            RenderResourceCache.HeaderPlayheadShadowBrush,
+            null,
+            endShadowGeometry);
+
+        var endGeometry = new StreamGeometry();
+        using (var ctx = endGeometry.Open())
+        {
+            ctx.BeginFigure(new Point(endX, yTop), true);
+            ctx.LineTo(new Point(endX - size / 2, yTop + size));
+            ctx.LineTo(new Point(endX + size / 2, yTop + size));
+            ctx.EndFigure(true);
+        }
+        var endBorderPen = RenderResourceCache.GetPen(Colors.White, 0.8);
+        context.DrawGeometry(markerGradient, endBorderPen, endGeometry);
+
+        // Region 라벨 (충분한 공간이 있을 때만)
+        if (endX - x > 50 && !string.IsNullOrWhiteSpace(marker.Name))
+        {
+            var label = new FormattedText(
+                marker.Name,
+                System.Globalization.CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                RenderResourceCache.SegoeUISemiBold, // 캐시 (A-5)
+                9,
+                RenderResourceCache.WhiteBrush);
+
+            double labelX = x + (endX - x) / 2 - label.Width / 2;
+            double labelY = lineY + 3;
+
+            // 라벨 배경 (동적 색상 A-5)
+            var labelBgRect = new Rect(labelX - 3, labelY - 1, label.Width + 6, label.Height + 2);
+            var labelBg = RenderResourceCache.GetSolidBrush(
+                Color.FromArgb(200, color.R, color.G, color.B));
+            context.FillRectangle(labelBg, labelBgRect);
+            context.DrawText(label, new Point(labelX, labelY));
+        }
+    }
+
+    /// <summary>
+    /// 마커 툴팁 (A-1: Y좌표 조정, A-5: 캐시)
+    /// </summary>
     private void DrawMarkerTooltip(DrawingContext context, MarkerModel marker)
     {
         double x = TimeToX(marker.TimeMs);
-        double y = 45;
+        double y = 22.0; // A-1: 60px 기준
 
-        var typeface = new Typeface("Segoe UI");
         var text = new FormattedText(
             marker.Name,
             System.Globalization.CultureInfo.CurrentCulture,
             FlowDirection.LeftToRight,
-            typeface,
+            RenderResourceCache.SegoeUI, // 캐시 (A-5)
             10,
-            Brushes.White);
+            RenderResourceCache.WhiteBrush);
 
-        // 배경 박스
         var padding = 4;
-        var bgRect = new Rect(
-            x - padding,
-            y - padding,
-            text.Width + padding * 2,
-            text.Height + padding * 2);
-
-        context.FillRectangle(
-            new SolidColorBrush(Color.FromArgb(220, 40, 40, 40)),
-            bgRect);
-
+        var bgRect = new Rect(x - padding, y - padding, text.Width + padding * 2, text.Height + padding * 2);
+        context.FillRectangle(RenderResourceCache.MarkerTooltipBgBrush, bgRect); // 캐시 (A-5)
         context.DrawText(text, new Point(x, y));
     }
 
@@ -600,29 +468,80 @@ public class TimelineHeader : Control
         foreach (var marker in _viewModel.Markers)
         {
             double x = TimeToX(marker.TimeMs);
-            if (Math.Abs(point.X - x) < threshold && point.Y < 40)
+            if (Math.Abs(point.X - x) < threshold && point.Y < 25)
                 return marker;
         }
-
         return null;
+    }
+
+    /// <summary>
+    /// 줌 슬라이더 영역 히트테스트
+    /// </summary>
+    private bool IsInZoomBar(Point point)
+    {
+        return point.X >= ZoomBarX - 4 &&
+               point.X <= ZoomBarX + ZoomBarWidth + 4 &&
+               point.Y >= ZoomBarY - 4 &&
+               point.Y <= ZoomBarY + ZoomBarHeight + 4;
+    }
+
+    /// <summary>
+    /// 클릭 X 위치에서 줌 레벨 계산 (로그 스케일)
+    /// </summary>
+    private double CalculateZoomFromX(double clickX)
+    {
+        double normalized = Math.Clamp((clickX - ZoomBarX) / ZoomBarWidth, 0, 1);
+        // 로그 스케일: 0→minZoom, 1→maxZoom
+        double logMin = Math.Log10(ZoomMinPxPerMs);
+        double logMax = Math.Log10(ZoomMaxPxPerMs);
+        return Math.Pow(10, normalized * (logMax - logMin) + logMin);
+    }
+
+    /// <summary>
+    /// 현재 줌 레벨의 정규화된 값 (0~1, 로그 스케일)
+    /// </summary>
+    private double GetNormalizedZoom()
+    {
+        double logMin = Math.Log10(ZoomMinPxPerMs);
+        double logMax = Math.Log10(ZoomMaxPxPerMs);
+        double normalized = (Math.Log10(_pixelsPerMs) - logMin) / (logMax - logMin);
+        return Math.Clamp(normalized, 0, 1);
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
-
         if (_viewModel == null) return;
 
-        // 재생 중이면 즉시 중지 (타이머+클럭 정지)
+        var point = e.GetPosition(this);
+
+        // 줌 슬라이더 클릭 (A-4: 인터랙티브)
+        if (IsInZoomBar(point))
+        {
+            // 더블클릭: 맞춤 보기 (전체 타임라인 피팅)
+            if (e.ClickCount == 2)
+            {
+                FitToWindow();
+            }
+            else
+            {
+                // 클릭/드래그 줌 조절
+                _isDraggingZoom = true;
+                ApplyZoomFromPointer(point.X);
+            }
+            e.Handled = true;
+            return;
+        }
+
+        // 재생 중이면 즉시 중지
         if (_viewModel.IsPlaying)
         {
             _viewModel.IsPlaying = false;
             _viewModel.RequestStopPlayback?.Invoke();
         }
 
-        var point = e.GetPosition(this);
-        var clickedMarker = GetMarkerAtPosition(point, threshold: 20);
-
+        // 마커 클릭
+        var clickedMarker = GetMarkerAtPosition(point, threshold: 15);
         if (clickedMarker != null)
         {
             _viewModel.CurrentTimeMs = clickedMarker.TimeMs;
@@ -630,9 +549,9 @@ public class TimelineHeader : Control
         }
         else
         {
-            // 마커가 아닌 곳을 클릭하면 Playhead 이동
+            // Playhead 이동 (드래그 시작)
             long timeMs = XToTime(point.X);
-            _viewModel.CurrentTimeMs = Math.Max(0, timeMs);
+            _viewModel.CurrentTimeMs = ClampTimeToContent(Math.Max(0, timeMs));
             _isDraggingPlayhead = true;
             e.Handled = true;
         }
@@ -641,18 +560,24 @@ public class TimelineHeader : Control
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
-
         var point = e.GetPosition(this);
 
-        // Playhead 드래그 중이면 계속 업데이트
+        // 줌 드래그 중 (A-4)
+        if (_isDraggingZoom)
+        {
+            ApplyZoomFromPointer(point.X);
+            return;
+        }
+
+        // Playhead 드래그 중
         if (_isDraggingPlayhead && _viewModel != null)
         {
             long timeMs = XToTime(point.X);
-            _viewModel.CurrentTimeMs = Math.Max(0, timeMs);
+            _viewModel.CurrentTimeMs = ClampTimeToContent(Math.Max(0, timeMs));
         }
 
-        var newHoveredMarker = GetMarkerAtPosition(point, threshold: 20);
-
+        // 마커 호버
+        var newHoveredMarker = GetMarkerAtPosition(point, threshold: 15);
         if (newHoveredMarker != _hoveredMarker)
         {
             _hoveredMarker = newHoveredMarker;
@@ -664,180 +589,221 @@ public class TimelineHeader : Control
     {
         base.OnPointerReleased(e);
         _isDraggingPlayhead = false;
+        _isDraggingZoom = false;
     }
 
     /// <summary>
-    /// In/Out 포인트 시각화 (워크에어리어 표시)
+    /// Ctrl + 마우스 휠로 줌 인/아웃 지원
+    /// (Kdenlive, Resolve 스타일 타임라인 줌 UX)
+    /// </summary>
+    protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
+    {
+        base.OnPointerWheelChanged(e);
+
+        if (!e.KeyModifiers.HasFlag(KeyModifiers.Control))
+            return;
+
+        // 한 번 휠당 약 15% 비율로 확대/축소
+        double deltaSteps = e.Delta.Y; // 위로 스크롤: 양수, 아래: 음수
+        if (Math.Abs(deltaSteps) < double.Epsilon)
+            return;
+
+        double zoomFactorPerStep = 1.15;
+        double factor = deltaSteps > 0
+            ? zoomFactorPerStep
+            : 1.0 / zoomFactorPerStep;
+
+        // 현재 마우스 위치를 기준으로 줌 (해당 포인트가 최대한 고정되도록)
+        var point = e.GetPosition(this);
+        double normalizedBefore = GetNormalizedZoom();
+
+        // px/ms 기준으로 배율 적용
+        double newPixelsPerMs = Math.Clamp(_pixelsPerMs * factor, 0.001, 5.0);
+        _pixelsPerMs = newPixelsPerMs;
+        OnZoomChanged?.Invoke(_pixelsPerMs);
+        InvalidateVisual();
+
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// 포인터 X 위치로 줌 적용 (A-4)
+    /// </summary>
+    private void ApplyZoomFromPointer(double pointerX)
+    {
+        double newZoom = CalculateZoomFromX(pointerX);
+        _pixelsPerMs = Math.Clamp(newZoom, 0.001, 5.0);
+        OnZoomChanged?.Invoke(_pixelsPerMs);
+        InvalidateVisual();
+    }
+
+    /// <summary>
+    /// 맞춤 보기: 전체 타임라인이 화면에 들어오도록 줌 조절 (A-4)
+    /// </summary>
+    private void FitToWindow()
+    {
+        if (_viewModel == null || _viewModel.Clips.Count == 0) return;
+
+        // 최대 클립 끝 시간
+        long maxEndMs = 0;
+        foreach (var clip in _viewModel.Clips)
+        {
+            long end = clip.StartTimeMs + clip.DurationMs;
+            if (end > maxEndMs) maxEndMs = end;
+        }
+
+        if (maxEndMs <= 0) return;
+
+        // 여유 10% 추가
+        double availableWidth = Bounds.Width - TrackHeaderWidth - 20;
+        if (availableWidth <= 0) return;
+
+        double fitZoom = availableWidth / (maxEndMs * 1.1);
+        _pixelsPerMs = Math.Clamp(fitZoom, 0.001, 5.0);
+        OnZoomChanged?.Invoke(_pixelsPerMs);
+        InvalidateVisual();
+    }
+
+    /// <summary>
+    /// In/Out 포인트 시각화 (A-1: Y좌표, A-5: 캐시)
     /// </summary>
     private void DrawInOutPoints(DrawingContext context)
     {
         if (_viewModel == null) return;
 
-        // In/Out 포인트가 둘 다 있으면 워크에어리어 영역 하이라이트
+        // 워크에어리어 배경
         if (_viewModel.InPointMs.HasValue && _viewModel.OutPointMs.HasValue)
         {
             double inX = TimeToX(_viewModel.InPointMs.Value);
             double outX = TimeToX(_viewModel.OutPointMs.Value);
 
-            // 워크에어리어 배경 (반투명 파란색)
             var workAreaRect = new Rect(
-                Math.Max(0, inX),
-                0,
+                Math.Max(0, inX), 0,
                 Math.Min(Bounds.Width, outX) - Math.Max(0, inX),
                 HeaderHeight);
 
             if (workAreaRect.Width > 0)
             {
-                context.FillRectangle(
-                    new SolidColorBrush(Color.FromArgb(30, 0, 122, 204)),
-                    workAreaRect);
+                context.FillRectangle(RenderResourceCache.WorkAreaBrush, workAreaRect);
             }
         }
 
-        // In 포인트 표시 (초록색 삼각형)
+        // In 포인트 (초록색 삼각형)
         if (_viewModel.InPointMs.HasValue)
         {
             double inX = TimeToX(_viewModel.InPointMs.Value);
-
             if (inX >= 0 && inX <= Bounds.Width)
             {
-                // 그림자
-                var shadowGeometry = new StreamGeometry();
-                using (var ctx = shadowGeometry.Open())
-                {
-                    ctx.BeginFigure(new Point(inX + 1, 1), true);
-                    ctx.LineTo(new Point(inX + 11, 1));
-                    ctx.LineTo(new Point(inX + 1, 11));
-                    ctx.EndFigure(true);
-                }
-                context.DrawGeometry(
-                    new SolidColorBrush(Color.FromArgb(100, 0, 0, 0)),
-                    null,
-                    shadowGeometry);
-
-                // 본체
-                var geometry = new StreamGeometry();
-                using (var ctx = geometry.Open())
-                {
-                    ctx.BeginFigure(new Point(inX, 0), true);
-                    ctx.LineTo(new Point(inX + 10, 0));
-                    ctx.LineTo(new Point(inX, 10));
-                    ctx.EndFigure(true);
-                }
-                context.DrawGeometry(
-                    new SolidColorBrush(Color.FromArgb(220, 92, 184, 92)), // 초록색
-                    new Pen(Brushes.White, 1),
-                    geometry);
-
-                // In 라벨
-                var inText = new FormattedText(
-                    "IN",
-                    System.Globalization.CultureInfo.CurrentCulture,
-                    FlowDirection.LeftToRight,
-                    new Typeface("Segoe UI", FontStyle.Normal, FontWeight.Bold),
-                    8,
-                    Brushes.White);
-
-                context.DrawText(inText, new Point(inX + 2, 12));
+                DrawInOutTriangle(context, inX, isInPoint: true);
             }
         }
 
-        // Out 포인트 표시 (빨간색 삼각형)
+        // Out 포인트 (빨간색 삼각형)
         if (_viewModel.OutPointMs.HasValue)
         {
             double outX = TimeToX(_viewModel.OutPointMs.Value);
-
             if (outX >= 0 && outX <= Bounds.Width)
             {
-                // 그림자
-                var shadowGeometry = new StreamGeometry();
-                using (var ctx = shadowGeometry.Open())
-                {
-                    ctx.BeginFigure(new Point(outX + 1, 1), true);
-                    ctx.LineTo(new Point(outX - 9, 1));
-                    ctx.LineTo(new Point(outX + 1, 11));
-                    ctx.EndFigure(true);
-                }
-                context.DrawGeometry(
-                    new SolidColorBrush(Color.FromArgb(100, 0, 0, 0)),
-                    null,
-                    shadowGeometry);
-
-                // 본체
-                var geometry = new StreamGeometry();
-                using (var ctx = geometry.Open())
-                {
-                    ctx.BeginFigure(new Point(outX, 0), true);
-                    ctx.LineTo(new Point(outX - 10, 0));
-                    ctx.LineTo(new Point(outX, 10));
-                    ctx.EndFigure(true);
-                }
-                context.DrawGeometry(
-                    new SolidColorBrush(Color.FromArgb(220, 217, 83, 79)), // 빨간색
-                    new Pen(Brushes.White, 1),
-                    geometry);
-
-                // Out 라벨
-                var outText = new FormattedText(
-                    "OUT",
-                    System.Globalization.CultureInfo.CurrentCulture,
-                    FlowDirection.LeftToRight,
-                    new Typeface("Segoe UI", FontStyle.Normal, FontWeight.Bold),
-                    8,
-                    Brushes.White);
-
-                context.DrawText(outText, new Point(outX - outText.Width - 2, 12));
+                DrawInOutTriangle(context, outX, isInPoint: false);
             }
         }
     }
 
     /// <summary>
-    /// Playhead (재생 헤드) 시각화
+    /// In/Out 삼각형 그리기 (A-5: 캐시)
+    /// </summary>
+    private void DrawInOutTriangle(DrawingContext context, double x, bool isInPoint)
+    {
+        double triSize = 8; // A-1: 약간 축소 (10→8)
+
+        // 그림자
+        var shadowBrush = RenderResourceCache.GetSolidBrush(Color.FromArgb(100, 0, 0, 0));
+        var shadowGeometry = new StreamGeometry();
+        using (var ctx = shadowGeometry.Open())
+        {
+            if (isInPoint)
+            {
+                ctx.BeginFigure(new Point(x + 1, 1), true);
+                ctx.LineTo(new Point(x + triSize + 1, 1));
+                ctx.LineTo(new Point(x + 1, triSize + 1));
+            }
+            else
+            {
+                ctx.BeginFigure(new Point(x + 1, 1), true);
+                ctx.LineTo(new Point(x - triSize + 1, 1));
+                ctx.LineTo(new Point(x + 1, triSize + 1));
+            }
+            ctx.EndFigure(true);
+        }
+        context.DrawGeometry(shadowBrush, null, shadowGeometry);
+
+        // 본체
+        var fillBrush = isInPoint ? RenderResourceCache.InPointBrush : RenderResourceCache.OutPointBrush;
+        var borderPen = RenderResourceCache.GetPen(Colors.White, 1);
+        var geometry = new StreamGeometry();
+        using (var ctx = geometry.Open())
+        {
+            if (isInPoint)
+            {
+                ctx.BeginFigure(new Point(x, 0), true);
+                ctx.LineTo(new Point(x + triSize, 0));
+                ctx.LineTo(new Point(x, triSize));
+            }
+            else
+            {
+                ctx.BeginFigure(new Point(x, 0), true);
+                ctx.LineTo(new Point(x - triSize, 0));
+                ctx.LineTo(new Point(x, triSize));
+            }
+            ctx.EndFigure(true);
+        }
+        context.DrawGeometry(fillBrush, borderPen, geometry);
+
+        // 라벨 (캐시 A-5)
+        var labelText = isInPoint ? "IN" : "OUT";
+        var label = new FormattedText(
+            labelText,
+            System.Globalization.CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            RenderResourceCache.SegoeUIBold, // 캐시 (A-5)
+            7,
+            RenderResourceCache.WhiteBrush);
+
+        double labelX = isInPoint ? x + 2 : x - label.Width - 2;
+        context.DrawText(label, new Point(labelX, triSize + 1));
+    }
+
+    /// <summary>
+    /// Playhead 시각화 (A-1: Y좌표, A-5: 캐시)
     /// </summary>
     private void DrawPlayhead(DrawingContext context)
     {
         if (_viewModel == null) return;
 
         double x = TimeToX(_viewModel.CurrentTimeMs);
-
-        // 화면 밖이면 렌더링하지 않음
         if (x < 0 || x > Bounds.Width)
             return;
 
         bool isPlaying = _viewModel.IsPlaying;
-        var baseColor = Color.FromRgb(255, 90, 0); // 주황색 (#FF5A00)
 
-        // 재생 중일 때 글로우 애니메이션
+        // 재생 중 글로우 (캐시 A-5)
         if (isPlaying)
         {
-            // 글로우 레이어 (넓은 반투명)
-            var glowPen = new Pen(
-                new SolidColorBrush(Color.FromArgb(80, baseColor.R, baseColor.G, baseColor.B)),
-                6);
-            context.DrawLine(glowPen,
-                new Point(x, 0),
-                new Point(x, HeaderHeight));
-
-            // 중간 글로우 (좁은 반투명)
-            var midGlowPen = new Pen(
-                new SolidColorBrush(Color.FromArgb(120, baseColor.R, baseColor.G, baseColor.B)),
-                3);
-            context.DrawLine(midGlowPen,
-                new Point(x, 0),
-                new Point(x, HeaderHeight));
+            context.DrawLine(RenderResourceCache.HeaderPlayheadGlowPen,
+                new Point(x, 0), new Point(x, HeaderHeight));
+            context.DrawLine(RenderResourceCache.HeaderPlayheadMidGlowPen,
+                new Point(x, 0), new Point(x, HeaderHeight));
         }
 
-        // Playhead 수직선 (메인)
-        var linePen = new Pen(new SolidColorBrush(baseColor), 2);
-        context.DrawLine(linePen,
-            new Point(x, 0),
-            new Point(x, HeaderHeight));
+        // Playhead 수직선 (캐시 A-5)
+        context.DrawLine(RenderResourceCache.HeaderPlayheadPen,
+            new Point(x, 0), new Point(x, HeaderHeight));
 
-        // 상단 핸들 (삼각형 + 사각형 드래그 영역)
-        const double handleWidth = 16;
-        const double handleHeight = 12;
+        // 상단 핸들 (삼각형)
+        const double handleWidth = 14; // A-1: 약간 축소 (16→14)
+        const double handleHeight = 10; // A-1: 축소 (12→10)
 
-        // 핸들 그림자
+        // 핸들 그림자 (캐시 A-5)
         var shadowGeometry = new StreamGeometry();
         using (var ctx = shadowGeometry.Open())
         {
@@ -847,11 +813,11 @@ public class TimelineHeader : Control
             ctx.EndFigure(true);
         }
         context.DrawGeometry(
-            new SolidColorBrush(Color.FromArgb(120, 0, 0, 0)),
+            RenderResourceCache.HeaderPlayheadShadowBrush,
             null,
             shadowGeometry);
 
-        // 핸들 본체 (그라디언트)
+        // 핸들 본체 (캐시된 그라디언트 A-5)
         var handleGeometry = new StreamGeometry();
         using (var ctx = handleGeometry.Open())
         {
@@ -860,41 +826,24 @@ public class TimelineHeader : Control
             ctx.LineTo(new Point(x + handleWidth / 2, handleHeight));
             ctx.EndFigure(true);
         }
-
-        var handleGradient = new LinearGradientBrush
-        {
-            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
-            EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
-            GradientStops = new GradientStops
-            {
-                new GradientStop(baseColor, 0),
-                new GradientStop(Color.FromRgb(
-                    (byte)Math.Max(0, baseColor.R - 50),
-                    (byte)Math.Max(0, baseColor.G - 50),
-                    (byte)Math.Max(0, baseColor.B - 50)), 1)
-            }
-        };
-
+        var handleBorderPen = RenderResourceCache.GetPen(Colors.White, 1.2);
         context.DrawGeometry(
-            handleGradient,
-            new Pen(Brushes.White, 1.5),
+            RenderResourceCache.HeaderPlayheadHandleGradient,
+            handleBorderPen,
             handleGeometry);
 
-        // 재생 중 표시 (핸들 안에 작은 삼각형)
+        // 재생 중 아이콘 (작은 삼각형)
         if (isPlaying)
         {
             var playIconGeometry = new StreamGeometry();
             using (var ctx = playIconGeometry.Open())
             {
-                ctx.BeginFigure(new Point(x - 3, 4), true);
-                ctx.LineTo(new Point(x + 3, 7));
-                ctx.LineTo(new Point(x - 3, 10));
+                ctx.BeginFigure(new Point(x - 2, 3), true);
+                ctx.LineTo(new Point(x + 3, 5.5));
+                ctx.LineTo(new Point(x - 2, 8));
                 ctx.EndFigure(true);
             }
-            context.DrawGeometry(
-                Brushes.White,
-                null,
-                playIconGeometry);
+            context.DrawGeometry(RenderResourceCache.WhiteBrush, null, playIconGeometry);
         }
     }
 
@@ -908,5 +857,25 @@ public class TimelineHeader : Control
     private long XToTime(double x)
     {
         return (long)((x - TrackHeaderWidth + _scrollOffsetX) / _pixelsPerMs);
+    }
+
+    /// <summary>
+    /// 스크럽 시간을 콘텐츠 범위로 클램프 (클립 끝 초과 방지)
+    /// 클립이 없으면 그대로 반환. 클립이 있으면 마지막 클립 끝 - 1ms로 제한.
+    /// </summary>
+    private long ClampTimeToContent(long timeMs)
+    {
+        if (_viewModel == null || _viewModel.Clips.Count == 0)
+            return timeMs;
+
+        long maxEndTime = 0;
+        foreach (var clip in _viewModel.Clips)
+        {
+            var clipEnd = clip.StartTimeMs + clip.DurationMs;
+            if (clipEnd > maxEndTime) maxEndTime = clipEnd;
+        }
+
+        // 클립 끝 - 1ms까지만 허용 (exclusive end 대응)
+        return Math.Min(timeMs, maxEndTime - 1);
     }
 }
