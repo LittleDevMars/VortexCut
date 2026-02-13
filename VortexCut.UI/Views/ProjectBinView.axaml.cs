@@ -1,7 +1,9 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using VortexCut.Core.Models;
+using VortexCut.UI.ViewModels;
 
 namespace VortexCut.UI.Views;
 
@@ -13,6 +15,36 @@ public partial class ProjectBinView : UserControl
     public ProjectBinView()
     {
         InitializeComponent();
+    }
+
+    protected override void OnLoaded(RoutedEventArgs e)
+    {
+        base.OnLoaded(e);
+
+        // ListBox 더블클릭 → Clip Monitor에 로드
+        var listBox = this.FindControl<ListBox>("MediaListBox");
+        if (listBox != null)
+        {
+            listBox.DoubleTapped += OnMediaItemDoubleTapped;
+        }
+    }
+
+    /// <summary>
+    /// Project Bin 미디어 아이템 더블클릭 → Clip Monitor에 로드
+    /// </summary>
+    private void OnMediaItemDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        var listBox = sender as ListBox;
+        if (listBox?.SelectedItem is not MediaItem mediaItem) return;
+
+        // MainViewModel을 찾아서 LoadClipToSourceMonitor 호출
+        // ProjectBinView의 DataContext는 ProjectBinViewModel이므로
+        // 상위 트리에서 MainViewModel을 가져옴
+        var mainWindow = TopLevel.GetTopLevel(this);
+        if (mainWindow?.DataContext is MainViewModel mainVm)
+        {
+            mainVm.LoadClipToSourceMonitor(mediaItem);
+        }
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)

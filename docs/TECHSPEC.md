@@ -216,7 +216,27 @@ AudioMixer ─→ decode 100ms ─→ push ─→ [Ring Buffer] ─→ pop ─�
 - **PTS 기반 샘플 스킵**: seek 후 keyframe→target 사이 불필요 샘플 제거
 - **Stop/Start 패턴**: 스크럽 시 Pause/Resume 대신 매번 재생성 (stale 버퍼 방지)
 
-### 4.4 고급 효과
+### 4.4 Clip Monitor (Source Monitor)
+
+**기능:**
+- Project Bin에서 미디어 더블클릭 → 독립 프리뷰
+- 스크럽 Slider + 30fps Play/Pause 재생
+- Mark In/Out 포인트 설정 (범위 지정)
+- Add to Timeline (In/Out 범위 + 겹침 감지 → 빈 트랙 자동 선택)
+
+**구현:**
+- ViewModel: [VortexCut.UI/ViewModels/SourceMonitorViewModel.cs](VortexCut.UI/ViewModels/SourceMonitorViewModel.cs)
+- View: [VortexCut.UI/Views/SourceMonitorView.axaml](VortexCut.UI/Views/SourceMonitorView.axaml)
+- 더블클릭: [VortexCut.UI/Views/ProjectBinView.axaml.cs](VortexCut.UI/Views/ProjectBinView.axaml.cs)
+
+**아키텍처:**
+- `ThumbnailSession.Create(filePath, 960, 540)` — 프리뷰 해상도로 디코더 세션 생성
+- 더블 버퍼링 WriteableBitmap A/B 교대 (Avalonia 바인딩 갱신 필수)
+- 단일 렌더 슬롯 (`Interlocked.CompareExchange`) — ThumbnailSession 동시 접근 방지
+- `ScrubRenderLoop` — pending timestamp 최신 요청만 처리 (중간 프레임 건너뜀)
+- `FindInsertPosition(durationMs)` — 재생헤드 위치에서 빈 비디오 트랙 탐색, 없으면 끝에 append
+
+### 4.5 고급 효과
 
 **기능:**
 - 트랜지션 (페이드, 디졸브 등)
@@ -670,16 +690,42 @@ dotnet build VortexCut.sln -c Release
 - [x] C# ExportService 래퍼
 - [x] ExportDialog UI (해상도/FPS/품질 설정)
 
-### Phase 5: 고급 기능 (예정)
+### Phase 7: 자막 편집 (2026-02-14) - ✅ 완료
 
-- [ ] Subtitle 파서/렌더러
-- [ ] Whisper 통합
-- [ ] TTS 통합
-- [ ] 고급 효과 (색보정, 필터)
-- [ ] 자막 편집 UI
-- [ ] 효과 패널 UI
-- [ ] Compositor (레이어 합성)
-- [ ] Undo/Redo
+#### Phase 7a: SRT 파싱 + 타임라인 UI + 프리뷰 (C#) - ✅ 완료
+- [x] SubtitleClipModel (ClipModel 상속 + Text, SubtitleStyle)
+- [x] SrtParser (SRT 파일 파싱/내보내기)
+- [x] 자막 트랙 타입 (TrackType.Subtitle)
+- [x] ClipCanvasPanel 자막 클립 렌더링 (앰버색 그라데이션 + 텍스트 표시)
+- [x] PreviewViewModel 자막 오버레이 (CurrentSubtitleText)
+- [x] InspectorView 자막 편집 탭
+
+#### Phase 7b: Export 자막 번인 (Rust FFI) - ✅ 완료
+- [x] Rust SubtitleOverlay 알파 블렌딩 합성
+- [x] C# SubtitleRenderService (Avalonia RenderTargetBitmap → RGBA)
+- [x] FFI: exporter_create_subtitle_list / subtitle_list_add / exporter_start_v2
+
+### Source Monitor (Clip Monitor) 구현 (2026-02-14) - ✅ 완료
+
+- [x] SourceMonitorViewModel (ThumbnailSession 기반 독립 프리뷰)
+- [x] 더블 버퍼링 + 단일 렌더 슬롯 (PreviewViewModel 패턴 미러링)
+- [x] Project Bin 더블클릭 → Clip Monitor 로드
+- [x] Slider 스크럽 + 30fps 재생
+- [x] Mark In/Out 포인트 설정
+- [x] Add to Timeline (겹침 감지 → 빈 트랙 자동 선택)
+- [x] FindInsertPosition() — 6개 비디오 트랙 순차 탐색, 겹치면 끝에 append
+
+### Phase 8: 고급 효과 시스템 (예정)
+
+- [ ] Brightness/Contrast, Saturation, Blur, Color Temperature
+- [ ] Rust RGBA 픽셀 연산 이펙트 파이프라인
+- [ ] Inspector 이펙트 패널 UI
+
+### Phase 9: GPU 하드웨어 가속 인코딩 (예정)
+
+- [ ] NVENC/QSV/AMF 자동 탐지
+- [ ] HW 인코더 실패 시 libx264 자동 폴백
+- [ ] ExportDialog 인코더 선택 UI
 
 ## 9. 테스트 전략
 

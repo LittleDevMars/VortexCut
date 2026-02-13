@@ -210,6 +210,49 @@ public partial class TimelineViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// 새 클립을 삽입할 최적의 트랙과 시작 위치를 찾음
+    /// 1) 현재 재생헤드 위치에서 빈 비디오 트랙 검색
+    /// 2) 모든 트랙이 겹치면 → 트랙 0의 기존 클립 끝에 append
+    /// </summary>
+    /// <returns>(trackIndex, startTimeMs)</returns>
+    public (int trackIndex, long startTimeMs) FindInsertPosition(long durationMs)
+    {
+        long playheadMs = CurrentTimeMs;
+
+        // 1) 재생헤드 위치에서 겹치지 않는 비디오 트랙 찾기
+        for (int i = 0; i < VideoTracks.Count; i++)
+        {
+            bool hasOverlap = false;
+            foreach (var clip in Clips)
+            {
+                if (clip.TrackIndex != i) continue;
+                // 비디오 트랙만 (자막/오디오 트랙 인덱스는 VideoTracks.Count 이상)
+                long clipEnd = clip.StartTimeMs + clip.DurationMs;
+                if (playheadMs < clipEnd && (playheadMs + durationMs) > clip.StartTimeMs)
+                {
+                    hasOverlap = true;
+                    break;
+                }
+            }
+            if (!hasOverlap)
+                return (i, playheadMs);
+        }
+
+        // 2) 모든 트랙이 겹침 → 트랙 0의 마지막 클립 끝에 append
+        long maxEndMs = 0;
+        foreach (var clip in Clips)
+        {
+            if (clip.TrackIndex < VideoTracks.Count)
+            {
+                long clipEnd = clip.StartTimeMs + clip.DurationMs;
+                if (clipEnd > maxEndMs) maxEndMs = clipEnd;
+            }
+        }
+
+        return (0, maxEndMs);
+    }
+
+    /// <summary>
     /// 타임라인 초기화
     /// </summary>
     public void Reset()

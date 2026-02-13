@@ -144,7 +144,7 @@
             <Grid ColumnDefinitions="Auto, *, Auto" Height="28" Margin="12,0">
                 <!-- Left: Status Message -->
                 <StackPanel Orientation="Horizontal" Spacing="12">
-                    <TextBlock Text="●" Foreground="{StaticResource SuccessBrush}" VerticalAlignment="Center" FontSize="10"/>
+                    <mi:MaterialIcon Kind="Circle" Width="10" Height="10" Foreground="{StaticResource SuccessBrush}" VerticalAlignment="Center"/>
                     <TextBlock Text="Ready" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" FontSize="11"/>
                 </StackPanel>
 

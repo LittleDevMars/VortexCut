@@ -2,58 +2,136 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:VortexCut.UI.ViewModels"
              xmlns:mi="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="300"
-             x:Class="VortexCut.UI.Views.SourceMonitorView">
-    
-    <Grid RowDefinitions="Auto, *, Auto">
+             x:Class="VortexCut.UI.Views.SourceMonitorView"
+             x:DataType="vm:MainViewModel">
+
+    <Grid RowDefinitions="Auto, *, Auto, Auto">
         <Border Classes="PanelHeader">
-            <TextBlock Classes="PanelTitle" Text="CLIP MONITOR"/>
+            <Grid ColumnDefinitions="Auto, *">
+                <TextBlock Classes="PanelTitle" Text="CLIP MONITOR"/>
+                <!-- 클립 이름 표시 -->
+                <TextBlock Grid.Column="1"
+                           Text="{Binding SourceMonitor.ClipName}"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           FontSize="11"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Right"
+                           Margin="0,0,8,0"
+                           TextTrimming="CharacterEllipsis"
+                           MaxWidth="200"/>
+            </Grid>
         </Border>
 
         <!-- Preview -->
         <Grid Grid.Row="1" Background="Black">
-            <TextBlock Text="No Clip Selected" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            <!-- 프리뷰 이미지 -->
+            <Image Source="{Binding SourceMonitor.PreviewImage}"
+                   Stretch="Uniform"
+                   IsVisible="{Binding SourceMonitor.HasClip}"/>
 
-            <!-- Proxy Indicator Badge -->
-            <Border Background="{StaticResource WarningBrush}"
+            <!-- No Clip Selected 표시 -->
+            <StackPanel HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        IsVisible="{Binding !SourceMonitor.HasClip}">
+                <mi:MaterialIcon Kind="MovieOpenOutline"
+                                 Width="48" Height="48"
+                                 Foreground="{StaticResource TextDisabledBrush}"/>
+                <TextBlock Text="No Clip Selected"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           HorizontalAlignment="Center"
+                           Margin="0,8,0,0"
+                           FontSize="13"/>
+                <TextBlock Text="Double-click a clip in Project Bin"
+                           Foreground="{StaticResource TextDisabledBrush}"
+                           HorizontalAlignment="Center"
+                           FontSize="11"/>
+            </StackPanel>
+
+            <!-- In/Out 범위 표시 (우상단 뱃지) -->
+            <Border Background="#80000000"
                     CornerRadius="3"
-                    Padding="8,4"
-                    Margin="12"
+                    Padding="6,3"
+                    Margin="8"
                     HorizontalAlignment="Right"
                     VerticalAlignment="Top"
-                    IsVisible="False"
-                    ToolTip.Tip="Playing with proxy (low resolution)">
-                <TextBlock Text="PROXY"
-                          Foreground="Black"
-                          FontSize="10"
-                          FontWeight="Bold"/>
+                    IsVisible="{Binding SourceMonitor.HasClip}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <StackPanel Orientation="Horizontal" Spacing="3"
+                                IsVisible="{Binding SourceMonitor.HasInPoint}">
+                        <TextBlock Text="IN" Foreground="{StaticResource SuccessBrush}" FontSize="10" FontWeight="Bold"/>
+                        <TextBlock Text="{Binding SourceMonitor.InPointDisplay}" Foreground="White" FontSize="10"
+                                   FontFamily="Consolas, Courier New, monospace"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="3"
+                                IsVisible="{Binding SourceMonitor.HasOutPoint}">
+                        <TextBlock Text="OUT" Foreground="{StaticResource ErrorBrush}" FontSize="10" FontWeight="Bold"/>
+                        <TextBlock Text="{Binding SourceMonitor.OutPointDisplay}" Foreground="White" FontSize="10"
+                                   FontFamily="Consolas, Courier New, monospace"/>
+                    </StackPanel>
+                </StackPanel>
             </Border>
         </Grid>
 
+        <!-- 스크럽 바 -->
+        <Border Grid.Row="2" Background="{StaticResource BgDarkBrush}" Padding="4,2">
+            <Slider x:Name="ScrubSlider"
+                    Minimum="0"
+                    Maximum="{Binding SourceMonitor.DurationMs}"
+                    Value="{Binding SourceMonitor.CurrentTimeMs, Mode=OneWay}"
+                    IsEnabled="{Binding SourceMonitor.HasClip}"
+                    Height="20"/>
+        </Border>
+
         <!-- Controls -->
-        <Border Grid.Row="2" Background="{StaticResource BgHeaderBrush}" Padding="8" BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}">
+        <Border Grid.Row="3" Background="{StaticResource BgHeaderBrush}" Padding="8" BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}">
             <Grid ColumnDefinitions="Auto, *, Auto">
+                <!-- 타임코드 -->
                 <Border Background="{StaticResource BgDarkBrush}" CornerRadius="3" Padding="10,4">
                     <TextBlock FontFamily="Consolas, Courier New, monospace"
                               FontSize="12"
                               Foreground="{StaticResource AccentBrush}"
-                              VerticalAlignment="Center">
-                        <Run Text="--:--:--:--"/>
-                    </TextBlock>
+                              VerticalAlignment="Center"
+                              Text="{Binding SourceMonitor.CurrentTimeDisplay}"/>
                 </Border>
+
+                <!-- 트랜스포트 버튼 -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="4">
-                    <Button Classes="ToolButton" ToolTip.Tip="Mark In (I)" Width="32" Height="28">
-                        <TextBlock Text="I" Foreground="{StaticResource SuccessBrush}" FontWeight="Bold" FontSize="13" FontFamily="Consolas"/>
+                    <Button Classes="ToolButton"
+                            ToolTip.Tip="Mark In (I)"
+                            Width="32" Height="28"
+                            Command="{Binding SourceMonitor.MarkInCommand}">
+                        <mi:MaterialIcon Kind="FormatHorizontalAlignLeft" Width="14" Height="14" Foreground="{StaticResource SuccessBrush}"/>
                     </Button>
-                    <Button Classes="ToolButton" ToolTip.Tip="Play Clip" Width="32" Height="28">
-                        <mi:MaterialIcon Kind="Play" Width="12" Height="12" Foreground="{StaticResource TextPrimaryBrush}"/>
+                    <Button Classes="ToolButton"
+                            ToolTip.Tip="Play / Pause"
+                            Width="40" Height="28"
+                            Command="{Binding SourceMonitor.TogglePlaybackCommand}">
+                        <Border Background="{StaticResource AccentBrush}" CornerRadius="3" Padding="8,4">
+                            <Panel>
+                                <mi:MaterialIcon Kind="Play" Width="12" Height="12" Foreground="White"
+                                                 IsVisible="{Binding !SourceMonitor.IsPlaying}"/>
+                                <mi:MaterialIcon Kind="Pause" Width="12" Height="12" Foreground="White"
+                                                 IsVisible="{Binding SourceMonitor.IsPlaying}"/>
+                            </Panel>
+                        </Border>
                     </Button>
-                    <Button Classes="ToolButton" ToolTip.Tip="Mark Out (O)" Width="32" Height="28">
-                        <TextBlock Text="O" Foreground="{StaticResource ErrorBrush}" FontWeight="Bold" FontSize="13" FontFamily="Consolas"/>
+                    <Button Classes="ToolButton"
+                            ToolTip.Tip="Mark Out (O)"
+                            Width="32" Height="28"
+                            Command="{Binding SourceMonitor.MarkOutCommand}">
+                        <mi:MaterialIcon Kind="FormatHorizontalAlignRight" Width="14" Height="14" Foreground="{StaticResource ErrorBrush}"/>
                     </Button>
                 </StackPanel>
-                <Button Grid.Column="2" Classes="ToolButton" ToolTip.Tip="Add to Timeline" Width="32" Height="28">
+
+                <!-- 타임라인 추가 -->
+                <Button Grid.Column="2"
+                        Classes="ToolButton"
+                        ToolTip.Tip="Add to Timeline"
+                        Width="32" Height="28"
+                        Command="{Binding AddToTimelineFromSourceCommand}">
                     <mi:MaterialIcon Kind="Plus" Width="12" Height="12" Foreground="{StaticResource AccentBrush}"/>
                 </Button>
             </Grid>
