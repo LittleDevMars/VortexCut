@@ -178,6 +178,39 @@ pub extern "C" fn renderer_get_cache_stats(
     }
 }
 
+/// 클립 이펙트 설정 (C# Inspector Color 탭 Slider에서 호출)
+/// brightness, contrast, saturation, temperature: -1.0 ~ 1.0 (0=원본)
+#[no_mangle]
+pub extern "C" fn renderer_set_clip_effects(
+    renderer: *mut c_void,
+    clip_id: u64,
+    brightness: f32,
+    contrast: f32,
+    saturation: f32,
+    temperature: f32,
+) -> i32 {
+    if renderer.is_null() {
+        return ErrorCode::NullPointer as i32;
+    }
+
+    unsafe {
+        let renderer_mutex = &*(renderer as *const Mutex<Renderer>);
+        match renderer_mutex.try_lock() {
+            Ok(mut r) => {
+                use crate::rendering::effects::EffectParams;
+                r.set_clip_effects(clip_id, EffectParams {
+                    brightness,
+                    contrast,
+                    saturation,
+                    temperature,
+                });
+                ErrorCode::Success as i32
+            }
+            Err(_) => ErrorCode::Success as i32, // busy면 무시 (다음 프레임에서 적용)
+        }
+    }
+}
+
 /// 렌더링된 프레임 데이터 해제
 #[no_mangle]
 pub extern "C" fn renderer_free_frame_data(data: *mut u8, size: usize) -> i32 {

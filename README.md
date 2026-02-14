@@ -15,10 +15,13 @@ VortexCut은 고성능 **Rust 렌더링 엔진**(ffmpeg-next)과 현대적인 **
 
 - 🚀 **고성능 렌더링**: Rust + FFmpeg 기반 네이티브 렌더링 엔진 (LRU FrameCache, 상태 머신 디코더)
 - 🎨 **현대적인 UI**: C# Avalonia로 구현된 크로스 플랫폼 UI (DaVinci Resolve 스타일)
-- 📝 **타임라인 편집**: 멀티 트랙 비디오/오디오 편집, Razor 분할, 스냅, 링크 클립
+- 📝 **타임라인 편집**: 멀티 트랙 비디오/오디오/자막 편집, Razor 분할, 스냅, 링크 클립
 - 🎬 **고품질 Export**: YUV420P 직접 전달 파이프라인 (H.264 + AAC, 색공간 변환 무손실)
 - 🔊 **실시간 오디오**: cpal WASAPI 재생 + AudioMixer 다중 클립 합성
+- 🎨 **색보정 이펙트**: Brightness, Contrast, Saturation, Temperature (Rust RGBA 픽셀 연산)
+- 📝 **자막 시스템**: SRT 임포트, 타임라인 편집, Export 번인 (Avalonia→RGBA→Rust 알파 블렌딩)
 - ↩️ **Undo/Redo**: Command 패턴 기반, Razor/이동/트림/삭제 모두 지원
+- 🎥 **Clip Monitor**: Source Monitor 독립 프리뷰, Mark In/Out, 스마트 타임라인 삽입
 
 ### 기술 스택
 
@@ -40,7 +43,7 @@ VortexCut/
 │   │   ├── ffi/              # FFI 인터페이스
 │   │   ├── ffmpeg/           # FFmpeg 래퍼
 │   │   ├── timeline/         # 타임라인 엔진
-│   │   ├── rendering/        # 렌더링 파이프라인 (LRU 캐시)
+│   │   ├── rendering/        # 렌더링 파이프라인 (LRU 캐시 + 이펙트)
 │   │   ├── encoding/         # Export (H.264+AAC 인코딩, 오디오 믹서)
 │   │   ├── audio/            # 실시간 오디오 재생 (cpal)
 │   │   └── subtitle/         # 자막 처리
@@ -144,6 +147,19 @@ dotnet test VortexCut.Tests
 
 ## 현재 상태
 
+### ✅ Phase 8 완료 (2026-02-14) - 색보정 이펙트 시스템
+
+- [x] **4가지 색보정 이펙트** - Brightness, Contrast, Saturation, Temperature
+- [x] **Rust RGBA 픽셀 연산** - 디코딩 후 캐시 전 적용, BT.709 luminance
+- [x] **실시간 프리뷰** - Inspector Color 탭 Slider 조작 → 즉시 반영
+- [x] **프로젝트 직렬화** - 이펙트 값 저장/복원
+
+### ✅ Phase 7 완료 (2026-02-14) - 자막 + Clip Monitor
+
+- [x] **자막 편집 시스템** - SRT 임포트, 타임라인 편집, Export 번인
+- [x] **Clip Monitor (Source Monitor)** - Project Bin 더블클릭 → 독립 프리뷰
+- [x] **Mark In/Out** - 범위 지정 후 타임라인 삽입 (겹침 감지 → 빈 트랙 자동 선택)
+
 ### ✅ Phase 6 완료 (2026-02-14) - Export 파이프라인 완성
 
 - [x] **고품질 Export 파이프라인**
@@ -167,9 +183,7 @@ dotnet test VortexCut.Tests
 - [x] **썸네일 스트립** - 비동기 생성, 캐싱, LOD 시스템
 
 ### 📋 계획
-- [ ] 자막 편집 기능
-- [ ] 고급 효과 시스템 (필터, 블러, 색보정)
-- [ ] GPU 하드웨어 가속 인코딩
+- [ ] GPU 하드웨어 가속 인코딩 (NVENC/QSV/AMF)
 
 ## 문서
 

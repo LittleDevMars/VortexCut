@@ -64,6 +64,23 @@ public class ClipModel
     [ReadOnly(true)]
     public bool IsLinked => LinkedAudioClipId.HasValue || LinkedVideoClipId.HasValue;
 
+    // 색보정 이펙트 (-1.0 ~ 1.0, 0=원본)
+    [Category("이펙트")]
+    [DisplayName("밝기")]
+    public double Brightness { get; set; } = 0.0;
+
+    [Category("이펙트")]
+    [DisplayName("대비")]
+    public double Contrast { get; set; } = 0.0;
+
+    [Category("이펙트")]
+    [DisplayName("채도")]
+    public double Saturation { get; set; } = 0.0;
+
+    [Category("이펙트")]
+    [DisplayName("색온도")]
+    public double Temperature { get; set; } = 0.0;
+
     // 키프레임 시스템 (After Effects 스타일) — 별도 키프레임 에디터에서 편집
     [Browsable(false)]
     public KeyframeSystem OpacityKeyframes { get; } = new KeyframeSystem();

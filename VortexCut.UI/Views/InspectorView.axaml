@@ -108,38 +108,66 @@
 
             <!-- Color Grade Tab -->
             <TabItem Header="Color">
-                <ScrollViewer>
-                    <StackPanel Margin="12" Spacing="12">
-                        <TextBlock Text="Color Grading" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12"/>
+                <Panel>
+                    <!-- 클립 선택 시 이펙트 슬라이더 -->
+                    <ScrollViewer IsVisible="{Binding Timeline.SelectedClip, Converter={x:Static ObjectConverters.IsNotNull}}">
+                        <StackPanel Margin="12" Spacing="12">
+                            <TextBlock Text="Color Grading" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12"/>
 
-                        <StackPanel Spacing="8">
-                            <TextBlock Text="Exposure" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
-                            <Slider Minimum="-100" Maximum="100" Value="0"/>
-                        </StackPanel>
+                            <StackPanel Spacing="4">
+                                <Grid ColumnDefinitions="*, Auto">
+                                    <TextBlock Text="Brightness" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                                    <TextBlock x:Name="BrightnessValueText" Grid.Column="1" Text="0" Foreground="{StaticResource TextPrimaryBrush}" FontSize="11"/>
+                                </Grid>
+                                <Slider x:Name="BrightnessSlider" Minimum="-100" Maximum="100" Value="0" SmallChange="1" LargeChange="10"/>
+                            </StackPanel>
 
-                        <StackPanel Spacing="8">
-                            <TextBlock Text="Contrast" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
-                            <Slider Minimum="-100" Maximum="100" Value="0"/>
-                        </StackPanel>
+                            <StackPanel Spacing="4">
+                                <Grid ColumnDefinitions="*, Auto">
+                                    <TextBlock Text="Contrast" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                                    <TextBlock x:Name="ContrastValueText" Grid.Column="1" Text="0" Foreground="{StaticResource TextPrimaryBrush}" FontSize="11"/>
+                                </Grid>
+                                <Slider x:Name="ContrastSlider" Minimum="-100" Maximum="100" Value="0" SmallChange="1" LargeChange="10"/>
+                            </StackPanel>
 
-                        <StackPanel Spacing="8">
-                            <TextBlock Text="Saturation" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
-                            <Slider Minimum="-100" Maximum="100" Value="0"/>
-                        </StackPanel>
+                            <StackPanel Spacing="4">
+                                <Grid ColumnDefinitions="*, Auto">
+                                    <TextBlock Text="Saturation" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                                    <TextBlock x:Name="SaturationValueText" Grid.Column="1" Text="0" Foreground="{StaticResource TextPrimaryBrush}" FontSize="11"/>
+                                </Grid>
+                                <Slider x:Name="SaturationSlider" Minimum="-100" Maximum="100" Value="0" SmallChange="1" LargeChange="10"/>
+                            </StackPanel>
 
-                        <Separator Background="{StaticResource BorderBrush}" Height="1" Margin="0,8"/>
+                            <Separator Background="{StaticResource BorderBrush}" Height="1" Margin="0,4"/>
 
-                        <TextBlock Text="Temperature" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" FontSize="12"/>
-                        <StackPanel Spacing="8">
-                            <TextBlock Text="Temperature" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
-                            <Slider Minimum="-100" Maximum="100" Value="0"/>
+                            <StackPanel Spacing="4">
+                                <Grid ColumnDefinitions="*, Auto">
+                                    <TextBlock Text="Temperature" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                                    <TextBlock x:Name="TemperatureValueText" Grid.Column="1" Text="0" Foreground="{StaticResource TextPrimaryBrush}" FontSize="11"/>
+                                </Grid>
+                                <Slider x:Name="TemperatureSlider" Minimum="-100" Maximum="100" Value="0" SmallChange="1" LargeChange="10"/>
+                            </StackPanel>
+
+                            <Separator Background="{StaticResource BorderBrush}" Height="1" Margin="0,4"/>
+
+                            <!-- Reset 버튼 -->
+                            <Button x:Name="ResetEffectsButton"
+                                    Content="Reset All"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center"
+                                    FontSize="11"/>
                         </StackPanel>
-                        <StackPanel Spacing="8">
-                            <TextBlock Text="Tint" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
-                            <Slider Minimum="-100" Maximum="100" Value="0"/>
-                        </StackPanel>
-                    </StackPanel>
-                </ScrollViewer>
+                    </ScrollViewer>
+
+                    <!-- 미선택 시 안내 -->
+                    <TextBlock
+                        IsVisible="{Binding Timeline.SelectedClip, Converter={x:Static ObjectConverters.IsNull}}"
+                        Text="클립을 선택하세요"
+                        Foreground="{StaticResource TextSecondaryBrush}"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        FontSize="13"/>
+                </Panel>
             </TabItem>
         </TabControl>
     </Grid>

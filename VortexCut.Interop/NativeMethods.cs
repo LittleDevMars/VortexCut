@@ -192,6 +192,19 @@ public static class NativeMethods
         out nuint outCacheBytes);
 
     /// <summary>
+    /// 클립 이펙트 설정 (Inspector Color 탭 Slider에서 호출)
+    /// brightness, contrast, saturation, temperature: -1.0 ~ 1.0 (0=원본)
+    /// </summary>
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern int renderer_set_clip_effects(
+        IntPtr renderer,
+        ulong clipId,
+        float brightness,
+        float contrast,
+        float saturation,
+        float temperature);
+
+    /// <summary>
     /// 렌더링된 프레임 데이터 해제
     /// </summary>
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]

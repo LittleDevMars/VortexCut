@@ -407,6 +407,19 @@ public class RenderService : IDisposable
     }
 
     /// <summary>
+    /// 클립 이펙트 설정 (Brightness, Contrast, Saturation, Temperature)
+    /// 값 범위: -1.0 ~ 1.0, 0=원본
+    /// </summary>
+    public void SetClipEffects(ulong clipId, float brightness, float contrast, float saturation, float temperature)
+    {
+        ThrowIfDisposed();
+        ThrowIfNoRenderer();
+
+        IntPtr rendererPtr = _renderer!.DangerousGetHandle();
+        NativeMethods.renderer_set_clip_effects(rendererPtr, clipId, brightness, contrast, saturation, temperature);
+    }
+
+    /// <summary>
     /// 프레임 캐시 클리어 (클립 편집/트림 변경 시 호출)
     /// </summary>
     public void ClearCache()

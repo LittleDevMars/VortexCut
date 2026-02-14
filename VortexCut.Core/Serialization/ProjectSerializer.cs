@@ -160,6 +160,19 @@ public class ClipData
     [JsonPropertyName("subtitleStyle")]
     public SubtitleStyleData? SubtitleStyle { get; set; }
 
+    // 색보정 이펙트 (-1.0 ~ 1.0, 0=원본)
+    [JsonPropertyName("brightness")]
+    public double Brightness { get; set; }
+
+    [JsonPropertyName("contrast")]
+    public double Contrast { get; set; }
+
+    [JsonPropertyName("saturation")]
+    public double Saturation { get; set; }
+
+    [JsonPropertyName("temperature")]
+    public double Temperature { get; set; }
+
     [JsonPropertyName("opacityKeyframes")]
     public KeyframeSystemData OpacityKeyframes { get; set; } = new();
 

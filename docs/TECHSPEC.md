@@ -1,8 +1,8 @@
 # VortexCut 기술 명세서 (Technical Specification)
 
-> **작성일**: 2026-02-13
-> **버전**: 0.9.0 (실시간 오디오 재생 + Export Pipeline)
-> **상태**: 비디오/오디오 동기 재생, MP4 Export, DaVinci Resolve 스타일 타임라인 UI
+> **작성일**: 2026-02-14
+> **버전**: 0.10.0 (색보정 이펙트 시스템)
+> **상태**: 비디오/오디오 동기 재생, MP4 Export, 자막, 색보정 이펙트, Clip Monitor
 
 ## 1. 개요
 
@@ -236,16 +236,45 @@ AudioMixer ─→ decode 100ms ─→ push ─→ [Ring Buffer] ─→ pop ─�
 - `ScrubRenderLoop` — pending timestamp 최신 요청만 처리 (중간 프레임 건너뜀)
 - `FindInsertPosition(durationMs)` — 재생헤드 위치에서 빈 비디오 트랙 탐색, 없으면 끝에 append
 
-### 4.5 고급 효과
+### 4.5 색보정 이펙트 시스템 (Phase 8)
 
 **기능:**
-- 트랜지션 (페이드, 디졸브 등)
-- 필터 (색보정, 블러 등)
-- 색보정 (밝기, 대비, 채도)
+- Brightness (밝기): 픽셀 오프셋 가산
+- Contrast (대비): 128 기준 스케일링
+- Saturation (채도): BT.709 luminance 기반 조정
+- Temperature (색온도): R/B 채널 오프셋 (warm=R+/B-, cool=R-/B+)
 
 **구현:**
-- Rust: [rust-engine/src/timeline/effect.rs](rust-engine/src/timeline/effect.rs)
-- C#: [VortexCut.UI/Views/EffectsView.axaml](VortexCut.UI/Views/EffectsView.axaml)
+- Rust 이펙트: [rust-engine/src/rendering/effects.rs](rust-engine/src/rendering/effects.rs)
+- Renderer 통합: [rust-engine/src/rendering/renderer.rs](rust-engine/src/rendering/renderer.rs) — `clip_effects: HashMap<u64, EffectParams>`
+- FFI: [rust-engine/src/ffi/renderer.rs](rust-engine/src/ffi/renderer.rs) — `renderer_set_clip_effects()`
+- Inspector UI: [VortexCut.UI/Views/InspectorView.axaml](VortexCut.UI/Views/InspectorView.axaml) — Color 탭
+
+**아키텍처:**
+```
+Inspector Color Tab (C#)
+    │ Slider ValueChanged (-100~100)
+    │ → ClipModel 프로퍼티 갱신 (-1.0~1.0)
+    │ → ProjectService.SetClipEffects()
+    ▼
+renderer_set_clip_effects() FFI
+    │ → Renderer.clip_effects HashMap 갱신
+    │ → FrameCache 클리어
+    ▼
+render_frame() → decode → apply_effects() → cache → C#
+    │ Brightness: pixel += brightness * 255
+    │ Contrast:   pixel = 128 + (pixel - 128) * (1 + contrast)
+    │ Saturation: lum = BT.709 weighted, pixel = lum + (pixel - lum) * (1 + sat)
+    │ Temperature: R += temp*30, B -= temp*30
+    ▼
+PreviewViewModel.RenderFrameAsync() → 즉시 프리뷰 갱신
+```
+
+**핵심 설계:**
+- 이펙트는 RGBA 프리뷰에만 적용 (YUV Export는 건너뜀)
+- 캐시된 프레임에 이펙트 포함 → 이펙트 변경 시 캐시 클리어
+- `is_default()` 검사로 기본값(0) 시 연산 건너뜀 (성능)
+- 프로젝트 저장/불러오기 시 이펙트 값 직렬화
 
 ### 4.5 전문가급 타임라인 기능 (Phase 2E)
 
@@ -715,11 +744,15 @@ dotnet build VortexCut.sln -c Release
 - [x] Add to Timeline (겹침 감지 → 빈 트랙 자동 선택)
 - [x] FindInsertPosition() — 6개 비디오 트랙 순차 탐색, 겹치면 끝에 append
 
-### Phase 8: 고급 효과 시스템 (예정)
+### Phase 8: 색보정 이펙트 시스템 (2026-02-14) - ✅ 완료
 
-- [ ] Brightness/Contrast, Saturation, Blur, Color Temperature
-- [ ] Rust RGBA 픽셀 연산 이펙트 파이프라인
-- [ ] Inspector 이펙트 패널 UI
+- [x] Rust effects.rs — EffectParams + apply_effects() RGBA 픽셀 연산
+- [x] Renderer 통합 — clip_effects HashMap, render_frame() 이펙트 적용
+- [x] FFI — renderer_set_clip_effects() (clip_id, brightness, contrast, saturation, temperature)
+- [x] C# ClipModel — Brightness/Contrast/Saturation/Temperature 프로퍼티
+- [x] Inspector Color 탭 — 4개 Slider (-100~100) + 값 표시 + Reset 버튼
+- [x] 실시간 프리뷰 — Slider 드래그 → Rust FFI → 캐시 클리어 → 즉시 재렌더
+- [x] 직렬화 — ClipData에 이펙트 필드 추가, 프로젝트 복원 시 Rust 동기화
 
 ### Phase 9: GPU 하드웨어 가속 인코딩 (예정)
 
@@ -986,7 +1019,7 @@ if (width * height * 4 > MAX_FRAME_SIZE) {
 
 ---
 
-**마지막 업데이트**: 2026-02-13 (Phase 4 완료: 실시간 오디오 재생 + Export Pipeline)
+**마지막 업데이트**: 2026-02-14 (Phase 8 완료: 색보정 이펙트 시스템)
 **작성자**: Claude Sonnet 4.5 / Claude Opus 4.6
-**Phase 4 구현 기간**: 2026-02-13 (1일)
-**Phase 4 추가 코드**: ~1,200 라인 (Rust 오디오 엔진 + Export + C# 서비스 + UI)
+**Phase 8 구현 기간**: 2026-02-14 (1일)
+**Phase 8 추가 코드**: ~300 라인 (Rust effects.rs + FFI + C# 서비스 + Inspector UI)

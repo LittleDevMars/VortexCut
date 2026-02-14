@@ -3,6 +3,7 @@
 
 use crate::timeline::{Timeline, VideoClip};
 use crate::ffmpeg::{Decoder, DecodeResult};
+use crate::rendering::effects::{EffectParams, apply_effects};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
@@ -136,6 +137,8 @@ pub struct Renderer {
     playback_mode: bool,
     /// Export용 출력 해상도 (None이면 프리뷰 960x540)
     export_resolution: Option<(u32, u32)>,
+    /// 클립별 이펙트 파라미터
+    clip_effects: HashMap<u64, EffectParams>,
     /// 진단 카운터 (매 30프레임마다 출력)
     diag_total: u64,
     diag_cache_hit: u64,
@@ -191,6 +194,7 @@ impl Renderer {
             last_rendered_frame: None,
             playback_mode: false,
             export_resolution: None,
+            clip_effects: HashMap::new(),
             diag_total: 0,
             diag_cache_hit: 0,
             diag_decoded: 0,
@@ -214,6 +218,7 @@ impl Renderer {
             last_rendered_frame: None,
             playback_mode: true, // forward decode 모드 (순차 접근)
             export_resolution: Some((width, height)),
+            clip_effects: HashMap::new(),
             diag_total: 0,
             diag_cache_hit: 0,
             diag_decoded: 0,
@@ -313,13 +318,21 @@ impl Renderer {
                     DecodeResult::Frame(frame) => {
                         self.diag_decoded += 1;
                         let is_yuv = frame.format == crate::ffmpeg::PixelFormat::YUV420P;
-                        let rendered = RenderedFrame {
+                        let mut rendered = RenderedFrame {
                             width: frame.width,
                             height: frame.height,
                             data: frame.data,
                             timestamp_ms,
                             is_yuv,
                         };
+                        // 이펙트 적용 (RGBA 프리뷰만, YUV Export는 건너뜀)
+                        if !rendered.is_yuv {
+                            if let Some(params) = self.clip_effects.get(&clip.id) {
+                                if !params.is_default() {
+                                    apply_effects(&mut rendered.data, rendered.width, rendered.height, params);
+                                }
+                            }
+                        }
                         // 캐시에 저장
                         self.frame_cache.put(file_path, *source_time_ms, rendered.clone());
                         self.last_rendered_frame = Some(rendered.clone());
@@ -444,6 +457,23 @@ impl Renderer {
                 decoder.decode_frame(source_time_ms)
             }
         }
+    }
+
+    /// 클립 이펙트 설정 (C# Slider 변경 시 호출)
+    pub fn set_clip_effects(&mut self, clip_id: u64, params: EffectParams) {
+        if params.is_default() {
+            self.clip_effects.remove(&clip_id);
+        } else {
+            self.clip_effects.insert(clip_id, params);
+        }
+        // 캐시 클리어 — 이펙트가 변경되면 캐시된 프레임도 무효화
+        self.frame_cache.clear();
+    }
+
+    /// 클립 이펙트 제거
+    pub fn clear_clip_effects(&mut self, clip_id: u64) {
+        self.clip_effects.remove(&clip_id);
+        self.frame_cache.clear();
     }
 
     /// 캐시 클리어 (클립 편집 시 호출)

@@ -196,6 +196,15 @@ public class ProjectService : IDisposable
     }
 
     /// <summary>
+    /// 클립 이펙트 설정 (Inspector Color 탭에서 호출)
+    /// </summary>
+    public void SetClipEffects(ulong clipId, float brightness, float contrast, float saturation, float temperature)
+    {
+        try { _renderService.SetClipEffects(clipId, brightness, contrast, saturation, temperature); }
+        catch { /* Renderer 미생성 시 무시 */ }
+    }
+
+    /// <summary>
     /// 렌더 캐시 클리어 (Undo/Redo 후 호출)
     /// </summary>
     public void ClearRenderCache()
@@ -407,6 +416,19 @@ public class ProjectService : IDisposable
             var clipModel = DtoToClip(clipDto, clipId);
             _currentProject.Clips.Add(clipModel);
             timelineVm.Clips.Add(clipModel);
+
+            // 이펙트가 있으면 Rust Renderer에 전달
+            if (Math.Abs(clipModel.Brightness) > 0.001 || Math.Abs(clipModel.Contrast) > 0.001
+                || Math.Abs(clipModel.Saturation) > 0.001 || Math.Abs(clipModel.Temperature) > 0.001)
+            {
+                try
+                {
+                    _renderService.SetClipEffects(clipId,
+                        (float)clipModel.Brightness, (float)clipModel.Contrast,
+                        (float)clipModel.Saturation, (float)clipModel.Temperature);
+                }
+                catch { /* Renderer busy 시 무시 */ }
+            }
         }
 
         // 7) Markers 복원 (ViewModel만)
@@ -481,6 +503,10 @@ public class ProjectService : IDisposable
             ColorLabelArgb = clip.ColorLabelArgb,
             LinkedAudioClipId = clip.LinkedAudioClipId,
             LinkedVideoClipId = clip.LinkedVideoClipId,
+            Brightness = clip.Brightness,
+            Contrast = clip.Contrast,
+            Saturation = clip.Saturation,
+            Temperature = clip.Temperature,
             OpacityKeyframes = KeyframeSystemToDto(clip.OpacityKeyframes),
             VolumeKeyframes = KeyframeSystemToDto(clip.VolumeKeyframes),
             PositionXKeyframes = KeyframeSystemToDto(clip.PositionXKeyframes),
@@ -505,7 +531,11 @@ public class ProjectService : IDisposable
         {
             ColorLabelArgb = data.ColorLabelArgb,
             LinkedAudioClipId = data.LinkedAudioClipId,
-            LinkedVideoClipId = data.LinkedVideoClipId
+            LinkedVideoClipId = data.LinkedVideoClipId,
+            Brightness = data.Brightness,
+            Contrast = data.Contrast,
+            Saturation = data.Saturation,
+            Temperature = data.Temperature
         };
 
         ApplyKeyframeSystemData(data.OpacityKeyframes, clip.OpacityKeyframes);
